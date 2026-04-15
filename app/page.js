@@ -1,65 +1,75 @@
-import Image from "next/image";
+import Link from "next/link";
+
+const sections = [
+  {
+    href: "/dashboard",
+    title: "Dashboard",
+    description: "Track totals, invoices, and daily activity from one place.",
+  },
+  {
+    href: "/products",
+    title: "Products",
+    description: "Manage billable items and keep pricing organized.",
+  },
+  {
+    href: "/billing",
+    title: "Billing",
+    description: "Create invoices, review payments, and follow balances.",
+  },
+  {
+    href: "/service",
+    title: "Service",
+    description: "Coordinate support work and service-based requests.",
+  },
+  {
+    href: "/reports",
+    title: "Reports",
+    description: "Review business summaries and export-ready reporting views.",
+  },
+  {
+    href: "/login",
+    title: "Login",
+    description: "Use the auth entry point prepared for protected routes.",
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-12 sm:px-10">
+      <section className="rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-sm">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-700">
+          Phase 1 Setup
+        </p>
+        <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+          Billing system foundation with Next.js, Tailwind, Prisma, and MySQL.
+        </h1>
+        <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+          The project structure is ready for authentication, product management,
+          billing flows, service requests, and reporting.
+        </p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {sections.map((section) => (
+          <Link
+            key={section.href}
+            href={section.href}
+            className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-cyan-300 hover:shadow-lg"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                {section.title}
+              </h2>
+              <span className="text-cyan-700 transition group-hover:translate-x-1">
+                {"->"}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {section.description}
+            </p>
+          </Link>
+        ))}
+      </section>
+    </main>
   );
 }
