@@ -1,335 +1,225 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import AppShell from "@/components/app-shell";
 import { useToast } from "@/components/toast-provider";
-import { AlertBanner, LoadingCard, Panel, SectionHeading, StatCard } from "@/components/ui";
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(Number(value || 0));
+function fmt(value) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(Number(value || 0));
 }
 
-function getCurrentDate() {
-  return new Date().toISOString().slice(0, 10);
+const today = () => new Date().toISOString().slice(0, 10);
+const thisMonth = () => new Date().toISOString().slice(0, 7);
+const thisYear = () => String(new Date().getFullYear());
+
+function Stat({ label, value, sub }) {
+  return (
+    <div className="border border-slate-200 rounded-sm px-5 py-4 bg-white">
+      <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-1">{label}</p>
+      <p className="text-2xl font-semibold text-slate-900 font-mono tracking-tight">{value}</p>
+      {sub && <p className="text-xs font-mono text-slate-400 mt-0.5">{sub}</p>}
+    </div>
+  );
 }
 
-function getCurrentMonth() {
-  return new Date().toISOString().slice(0, 7);
-}
-
-function getCurrentYear() {
-  return String(new Date().getFullYear());
+function ExportCard({ title, description, type, inputType, value, onChange, onDownload }) {
+  return (
+    <div className="border border-slate-200 rounded-sm bg-white p-5">
+      <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold mb-1">{title}</p>
+      <p className="text-xs font-mono text-slate-400 mb-4">{description}</p>
+      <label className="block mb-3">
+        <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-slate-500">
+          {type === "date" ? "Date" : type === "month" ? "Month" : "Year"}
+        </span>
+        <input
+          type={inputType}
+          value={value}
+          onChange={onChange}
+          className="mt-1.5 w-full border border-slate-200 rounded-sm px-3 py-2.5 text-sm font-mono text-slate-900 outline-none focus:border-slate-900 bg-white"
+        />
+      </label>
+      <button
+        onClick={onDownload}
+        className="w-full bg-slate-900 text-white text-xs font-mono py-3 rounded-sm hover:bg-slate-700 transition-colors"
+      >
+        download excel →
+      </button>
+    </div>
+  );
 }
 
 export default function ReportsClient() {
   const { pushToast } = useToast();
-  const [reportDate, setReportDate] = useState(getCurrentDate);
-  const [reportMonth, setReportMonth] = useState(getCurrentMonth);
-  const [reportYear, setReportYear] = useState(getCurrentYear);
-  const [state, setState] = useState({
-    loading: true,
-    error: "",
-    daily: null,
-    monthly: null,
-    yearly: null,
-    product: null,
-    stock: null,
-  });
+  const [reportDate, setReportDate] = useState(today);
+  const [reportMonth, setReportMonth] = useState(thisMonth);
+  const [reportYear, setReportYear] = useState(thisYear);
+  const [state, setState] = useState({ loading: true, error: "", daily: null, monthly: null, yearly: null, product: null, stock: null });
   const [productSearch, setProductSearch] = useState("");
 
   useEffect(() => {
     let active = true;
-
-    async function loadReports() {
+    async function load() {
+      setState((c) => ({ ...c, loading: true, error: "" }));
       try {
-        setState((current) => ({ ...current, loading: true, error: "" }));
-        const [dailyRes, monthlyRes, yearlyRes, productRes, stockRes] = await Promise.all([
+        const [dR, mR, yR, pR, sR] = await Promise.all([
           fetch(`/api/reports/daily?date=${encodeURIComponent(reportDate)}`),
           fetch(`/api/reports/monthly?month=${encodeURIComponent(reportMonth)}`),
           fetch(`/api/reports/yearly?year=${encodeURIComponent(reportYear)}`),
           fetch("/api/reports/product"),
           fetch("/api/reports/stock"),
         ]);
-
-        const [daily, monthly, yearly, product, stock] = await Promise.all([
-          dailyRes.json(),
-          monthlyRes.json(),
-          yearlyRes.json(),
-          productRes.json(),
-          stockRes.json(),
-        ]);
-
-        if (!active) {
-          return;
-        }
-
-        if (!dailyRes.ok || !monthlyRes.ok || !yearlyRes.ok || !productRes.ok || !stockRes.ok) {
-          throw new Error(
-            daily.error ||
-              monthly.error ||
-              yearly.error ||
-              product.error ||
-              stock.error ||
-              "Unable to load reports."
-          );
-        }
-
-        setState({
-          loading: false,
-          error: "",
-          daily,
-          monthly,
-          yearly,
-          product,
-          stock,
-        });
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-
-        pushToast({
-          title: "Reports unavailable",
-          description: error.message || "Unable to load reports.",
-          tone: "error",
-        });
-
-        setState((current) => ({
-          ...current,
-          loading: false,
-          error: error.message || "Unable to load reports.",
-        }));
+        const [daily, monthly, yearly, product, stock] = await Promise.all([dR.json(), mR.json(), yR.json(), pR.json(), sR.json()]);
+        if (!active) return;
+        if (!dR.ok || !mR.ok || !yR.ok || !pR.ok || !sR.ok) throw new Error(daily.error || "Unable to load reports.");
+        setState({ loading: false, error: "", daily, monthly, yearly, product, stock });
+      } catch (e) {
+        if (!active) return;
+        pushToast({ title: "Reports unavailable", description: e.message, tone: "error" });
+        setState((c) => ({ ...c, loading: false, error: e.message }));
       }
     }
-
-    loadReports();
-
-    return () => {
-      active = false;
-    };
+    load();
+    return () => { active = false; };
   }, [pushToast, reportDate, reportMonth, reportYear]);
 
-  function downloadReport(path) {
-    window.open(path, "_blank", "noopener,noreferrer");
-  }
+  const download = (path) => window.open(path, "_blank", "noopener,noreferrer");
 
-  const topProducts = (state.product?.products || []).slice(0, 5);
   const breakdown = (state.monthly?.breakdown || []).slice(-6);
   const filteredProducts = useMemo(() => {
-    const normalizedSearch = productSearch.trim().toLowerCase();
-
-    return (state.product?.products || []).filter((product) =>
-      !normalizedSearch
-        ? true
-        : [product.name, product.brand, product.sku]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase()
-            .includes(normalizedSearch)
+    const q = productSearch.trim().toLowerCase();
+    return (state.product?.products || []).filter((p) =>
+      !q || [p.name, p.brand, p.sku].filter(Boolean).join(" ").toLowerCase().includes(q)
     );
   }, [productSearch, state.product]);
-  const lowStockCount = state.stock?.summary?.lowStockCount ?? 0;
+
+  const { loading } = state;
 
   return (
-    <AppShell
-      eyebrow="Insight Layer"
-      title="Reports"
-      description="Read the day, track the month and year, then export sales data in Excel anytime."
-    >
-      {state.error ? (
-        <Panel className="border-rose-200 bg-rose-50/90">
-          <p className="text-sm text-rose-700">{state.error}</p>
-        </Panel>
-      ) : null}
+    <main className="min-h-screen bg-slate-50 px-6 py-8 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between border-b border-slate-200 pb-5 mb-6">
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-slate-400 mb-1">Insight Layer</p>
+          <h1 className="text-xl font-semibold text-slate-900">Reports</h1>
+        </div>
+      </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Daily Revenue"
-          value={state.loading ? "..." : formatCurrency(state.daily?.summary?.invoiceRevenue)}
-          hint={`Invoices for ${reportDate}`}
-          tone="cyan"
+      {state.error && (
+        <div className="border border-rose-200 bg-rose-50 rounded-sm px-4 py-2.5 mb-6 text-xs font-mono text-rose-700">{state.error}</div>
+      )}
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+        <Stat label="Daily Revenue" value={loading ? "—" : fmt(state.daily?.summary?.invoiceRevenue)} sub={`Invoices ${reportDate}`} />
+        <Stat label="Monthly Revenue" value={loading ? "—" : fmt(state.monthly?.summary?.invoiceRevenue)} sub={`Invoices ${reportMonth}`} />
+        <Stat label="Yearly Revenue" value={loading ? "—" : fmt(state.yearly?.summary?.invoiceRevenue)} sub={`Invoices ${reportYear}`} />
+        <Stat label="Out of Stock" value={loading ? "—" : state.stock?.summary?.outOfStockCount ?? 0} sub="Need replenishment" />
+      </div>
+
+      {(state.stock?.summary?.lowStockCount ?? 0) > 0 && (
+        <div className="border border-amber-200 bg-amber-50 rounded-sm px-4 py-2.5 mb-6 text-xs font-mono text-amber-700">
+          ⚠ {state.stock.summary.lowStockCount} products at low stock. Review needed.
+        </div>
+      )}
+
+      {/* Export cards */}
+      <div className="grid gap-3 xl:grid-cols-3 mb-6">
+        <ExportCard
+          title="Daily Export" description="Download single-day sales report."
+          type="date" inputType="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)}
+          onDownload={() => download(`/api/reports/daily?date=${encodeURIComponent(reportDate)}&format=xlsx`)}
         />
-        <StatCard
-          label="Monthly Revenue"
-          value={state.loading ? "..." : formatCurrency(state.monthly?.summary?.invoiceRevenue)}
-          hint={`Invoices for ${reportMonth}`}
+        <ExportCard
+          title="Monthly Export" description="Download full month sales breakdown."
+          type="month" inputType="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)}
+          onDownload={() => download(`/api/reports/monthly?month=${encodeURIComponent(reportMonth)}&format=xlsx`)}
         />
-        <StatCard
-          label="Yearly Revenue"
-          value={state.loading ? "..." : formatCurrency(state.yearly?.summary?.invoiceRevenue)}
-          hint={`Invoices for ${reportYear}`}
-          tone="amber"
-        />
-        <StatCard
-          label="Out of Stock"
-          value={state.loading ? "..." : state.stock?.summary?.outOfStockCount ?? 0}
-          hint="Immediate replenishment required"
-          tone="rose"
+        <ExportCard
+          title="Yearly Export" description="Download annual summary report."
+          type="year" inputType="text" value={reportYear} onChange={(e) => setReportYear(e.target.value)}
+          onDownload={() => download(`/api/reports/yearly?year=${encodeURIComponent(reportYear)}&format=xlsx`)}
         />
       </div>
 
-      {lowStockCount > 0 ? (
-        <AlertBanner
-          title="Stock attention required"
-          description={`${lowStockCount} products are at low stock levels and need review.`}
-        />
-      ) : null}
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Panel>
-          <SectionHeading title="Daily Export" description="Select date and download report in Excel." />
-          <label className="mt-4 block">
-            <span className="text-sm font-medium text-slate-700">Date</span>
-            <input
-              type="date"
-              value={reportDate}
-              onChange={(event) => setReportDate(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() =>
-              downloadReport(
-                `/api/reports/daily?date=${encodeURIComponent(reportDate)}&format=xlsx`
-              )
-            }
-            className="mt-4 w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            Download Daily Excel
-          </button>
-        </Panel>
-
-        <Panel>
-          <SectionHeading title="Monthly Export" description="Pick month and export month-wise sales." />
-          <label className="mt-4 block">
-            <span className="text-sm font-medium text-slate-700">Month</span>
-            <input
-              type="month"
-              value={reportMonth}
-              onChange={(event) => setReportMonth(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() =>
-              downloadReport(
-                `/api/reports/monthly?month=${encodeURIComponent(reportMonth)}&format=xlsx`
-              )
-            }
-            className="mt-4 w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            Download Monthly Excel
-          </button>
-        </Panel>
-
-        <Panel>
-          <SectionHeading title="Yearly Export" description="Choose year and download annual report." />
-          <label className="mt-4 block">
-            <span className="text-sm font-medium text-slate-700">Year</span>
-            <input
-              value={reportYear}
-              onChange={(event) => setReportYear(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-cyan-500"
-              placeholder="2026"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() =>
-              downloadReport(
-                `/api/reports/yearly?year=${encodeURIComponent(reportYear)}&format=xlsx`
-              )
-            }
-            className="mt-4 w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            Download Yearly Excel
-          </button>
-        </Panel>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1fr_0.95fr]">
-        <Panel>
-          <SectionHeading title="Monthly Breakdown" description="Recent daily trend line across revenue and stock spend." />
-          <div className="mt-5 space-y-3">
-            {state.loading ? (
-              <div className="grid gap-3">
-                <LoadingCard lines={2} />
-                <LoadingCard lines={2} />
+      {/* Data panels */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* Monthly breakdown */}
+        <div className="border border-slate-200 rounded-sm bg-white p-5">
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold mb-4">Monthly Breakdown</p>
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="h-12 bg-slate-100 rounded-sm animate-pulse" />)}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-4 gap-2 px-3 py-2 text-[10px] font-mono uppercase tracking-[0.12em] text-slate-400 bg-slate-50 rounded-sm mb-1">
+                <span>Date</span><span>Invoice</span><span>Purchase</span><span>Service</span>
               </div>
-            ) : breakdown.length ? (
-              breakdown.map((row) => (
-                <div key={row.date} className="grid grid-cols-[0.7fr_1fr_1fr_1fr] gap-3 rounded-[1.5rem] border border-slate-200 px-4 py-4 text-sm">
-                  <p className="font-medium text-slate-950">{row.date}</p>
-                  <p className="text-slate-600">{formatCurrency(row.invoiceRevenue)}</p>
-                  <p className="text-slate-600">{formatCurrency(row.purchaseSpend)}</p>
-                  <p className="text-slate-600">{formatCurrency(row.serviceRevenue)}</p>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-slate-500">No monthly data available yet.</p>
-            )}
+              <div className="space-y-1">
+                {breakdown.length ? breakdown.map((row) => (
+                  <div key={row.date} className="grid grid-cols-4 gap-2 px-3 py-3 text-xs font-mono border-b border-slate-100 last:border-0">
+                    <p className="text-slate-900 font-medium">{row.date}</p>
+                    <p className="text-slate-600">{fmt(row.invoiceRevenue)}</p>
+                    <p className="text-slate-600">{fmt(row.purchaseSpend)}</p>
+                    <p className="text-slate-600">{fmt(row.serviceRevenue)}</p>
+                  </div>
+                )) : (
+                  <p className="text-xs font-mono text-slate-400 py-4 px-3">No monthly data yet.</p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Top product movers */}
+        <div className="border border-slate-200 rounded-sm bg-white p-5">
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold">Top Product Movers</p>
+            <input
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Search..."
+              className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-900 outline-none focus:border-slate-900 bg-white placeholder:text-slate-300"
+            />
           </div>
-        </Panel>
-
-        <Panel>
-          <SectionHeading
-            title="Top Product Movers"
-            description="Revenue-heavy items that are doing the most work."
-            action={
-              <input
-                value={productSearch}
-                onChange={(event) => setProductSearch(event.target.value)}
-                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm outline-none focus:border-cyan-500"
-                placeholder="Search products"
-              />
-            }
-          />
-          <div className="mt-5 space-y-3">
-            {state.loading ? (
-              <div className="grid gap-3">
-                <LoadingCard lines={2} />
-                <LoadingCard lines={2} />
-              </div>
-            ) : filteredProducts.length ? (
-              filteredProducts.slice(0, 5).map((product) => (
-                <div key={product.id} className="rounded-[1.5rem] border border-slate-200 px-4 py-4">
-                  <div className="flex items-center justify-between gap-4">
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-slate-100 rounded-sm animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filteredProducts.slice(0, 5).length ? filteredProducts.slice(0, 5).map((p) => (
+                <div key={p.id} className="border-b border-slate-100 last:border-0 py-3">
+                  <div className="flex items-center justify-between gap-3 mb-2">
                     <div>
-                      <p className="font-medium text-slate-950">{product.name}</p>
-                      <p className="text-sm text-slate-500">{product.brand || "Unbranded"}</p>
+                      <p className="text-sm font-medium text-slate-900">{p.name}</p>
+                      <p className="text-xs font-mono text-slate-400">{p.brand || "Unbranded"}</p>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                      {product.currentStock} left
+                    <span className="text-[10px] font-mono text-slate-500 bg-slate-50 border border-slate-100 rounded-sm px-2 py-1">
+                      {p.currentStock} left
                     </span>
                   </div>
-                  <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                  <div className="grid grid-cols-3 gap-2 text-xs font-mono">
                     <div>
-                      <p className="text-slate-500">Sold</p>
-                      <p className="font-semibold text-slate-950">{product.soldQuantity}</p>
+                      <p className="text-slate-400">sold</p>
+                      <p className="text-slate-900 font-semibold">{p.soldQuantity}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Sales</p>
-                      <p className="font-semibold text-slate-950">{formatCurrency(product.salesRevenue)}</p>
+                      <p className="text-slate-400">revenue</p>
+                      <p className="text-slate-900 font-semibold">{fmt(p.salesRevenue)}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Service use</p>
-                      <p className="font-semibold text-slate-950">{product.serviceQuantity}</p>
+                      <p className="text-slate-400">service</p>
+                      <p className="text-slate-900 font-semibold">{p.serviceQuantity}</p>
                     </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-slate-500">No product movement matches the current search.</p>
-            )}
-          </div>
-        </Panel>
+              )) : (
+                <p className="text-xs font-mono text-slate-400 py-4">No products match the search.</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </AppShell>
+    </main>
   );
 }

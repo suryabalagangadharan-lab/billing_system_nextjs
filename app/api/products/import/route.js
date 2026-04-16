@@ -7,80 +7,53 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/* ---------------- HELPERS ---------------- */
+
 function getFirstValue(row, keys) {
   for (const key of keys) {
     if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
       return row[key];
     }
   }
-
   return null;
 }
 
 function toOptionalText(value) {
-  if (value === undefined || value === null) {
-    return null;
-  }
-
-  const normalized = String(value).trim();
-  return normalized || null;
+  if (value === undefined || value === null) return null;
+  const v = String(value).trim();
+  return v || null;
 }
 
-function toMoney(value, fieldName) {
-  if (value === undefined || value === null || String(value).trim() === "") {
-    return null;
+function toMoney(value, field) {
+  if (!value) return null;
+  const num = Number(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(num) || num < 0) {
+    throw new ApiError(`${field} must be valid`, 400);
   }
-
-  const normalizedValue = String(value).replace(/,/g, "").trim();
-  const parsed = Number(normalizedValue);
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new ApiError(`${fieldName} must be a valid non-negative number.`, 400);
-  }
-
-  return parsed.toFixed(2);
+  return num.toFixed(2);
 }
 
 function toGstRate(value) {
-  if (value === undefined || value === null || String(value).trim() === "") {
-    return null;
-  }
-
-  const raw = String(value);
-  const bracketMatch = raw.match(/\((\d+(\.\d+)?)%\)/);
-
-  if (bracketMatch) {
-    return Number(bracketMatch[1]).toFixed(2);
-  }
-
-  const directMatch = raw.match(/(\d+(\.\d+)?)/);
-  if (directMatch) {
-    return Number(directMatch[1]).toFixed(2);
-  }
-
-  throw new ApiError("GST rate must be a valid number.", 400);
+  if (!value) return "0.00";
+  const match = String(value).match(/(\d+(\.\d+)?)/);
+  if (!match) throw new ApiError("Invalid GST", 400);
+  return Number(match[1]).toFixed(2);
 }
 
 function toStock(value) {
-  if (value === undefined || value === null || String(value).trim() === "") {
-    return null;
+  if (!value) return null;
+  const num = Number(value);
+  if (!Number.isInteger(num) || num < 0) {
+    throw new ApiError("Invalid stock", 400);
   }
-
-  const parsed = Number(value);
-
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new ApiError("Stock must be a valid non-negative integer.", 400);
-  }
-
-  return parsed;
+  return num;
 }
 
 function buildDescription(row) {
   const parts = [
-    getFirstValue(row, ["description", "details"]),
-    getFirstValue(row, ["categoryitemtype", "category", "itemtype"]),
+    getFirstValue(row, ["description"]),
+    getFirstValue(row, ["category"]),
     getFirstValue(row, ["unit"]),
-    getFirstValue(row, ["status"]),
   ]
     .map(toOptionalText)
     .filter(Boolean);
@@ -88,64 +61,78 @@ function buildDescription(row) {
   return parts.length ? parts.join(" | ") : null;
 }
 
-export async function POST(request) {
-  const authResult = await requireApiAuth(request, { roles: ["admin", "employee"] });
+/* ---------------- API ---------------- */
 
-  if (authResult.error) {
-    return authResult.error;
-  }
+export async function POST(request) {
+  const auth = await requireApiAuth(request, { roles: ["admin", "employee"] });
+  if (auth.error) return auth.error;
 
   try {
     const formData = await request.formData();
     const file = formData.get("file");
 
     if (!file || typeof file === "string") {
-      throw new ApiError("Excel file is required.", 400);
+      throw new ApiError("Excel file required", 400);
     }
 
     const buffer = await file.arrayBuffer();
     const rows = parseWorkbookRows(buffer);
-
-    if (!rows.length) {
-      throw new ApiError("No rows found in uploaded file.", 400);
-    }
 
     let created = 0;
     let updated = 0;
     let skipped = 0;
     const errors = [];
 
-    for (let index = 0; index < rows.length; index += 1) {
-      const row = rows[index];
-      const rowNumber = index + 2;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNumber = i + 2;
 
       try {
-        const rawName = getFirstValue(row, ["name", "itemname", "productname", "product"]);
-        const name = toOptionalText(rawName?.toString().replace(/HSN:.*$/i, "").replace(/SKU:.*$/i, ""));
+        /* ---------- REQUIRED FIELDS ---------- */
+
+        const itemCode = toOptionalText(
+          getFirstValue(row, ["itemcode", "item code", "code"])
+        )?.toUpperCase();
+
+        let finalItemCode = itemCode;
+
+if (!finalItemCode) {
+  finalItemCode = `AUTO-${Date.now()}-${i}`;
+}
+
+        const name = toOptionalText(
+          getFirstValue(row, ["itemname", "name", "product"])
+        );
+
         if (!name) {
-          skipped += 1;
+          skipped++;
           continue;
         }
 
-        const sku = toOptionalText(getFirstValue(row, ["sku", "itemcode", "code"]));
-        const brandName = toOptionalText(getFirstValue(row, ["brandname", "brand", "company"]));
-        const description = buildDescription(row);
+        /* ---------- OPTIONAL ---------- */
+
+        const sku = toOptionalText(getFirstValue(row, ["sku"]));
+        const brandName = toOptionalText(getFirstValue(row, ["brand"]));
+        const category = toOptionalText(getFirstValue(row, ["category"]));
+        const unit = toOptionalText(getFirstValue(row, ["unit"]));
+        const alertQty = Number(getFirstValue(row, ["alertqty"]) || 0);
+
         const unitPrice = toMoney(
-          getFirstValue(row, ["unitprice", "salesprice", "sellingprice", "mrp", "rate"]),
-          "Unit price"
+          getFirstValue(row, ["salesprice", "unitprice"]),
+          "Unit Price"
         );
-        const costPrice = toMoney(
-          getFirstValue(row, ["costprice", "purchaseprice", "cost"]),
-          "Cost price"
-        );
-        const gstRate = toGstRate(
-          getFirstValue(row, ["gstrate", "gst", "gstpercent", "taxrate", "tax"])
-        );
-        const stock = toStock(getFirstValue(row, ["stock", "qty", "quantity", "openingstock"]));
 
         if (!unitPrice) {
-          throw new ApiError("Unit price is required.", 400);
+          throw new ApiError("Unit price required", 400);
         }
+
+        const costPrice = toMoney(getFirstValue(row, ["costprice"]), "Cost");
+        const gstRate = toGstRate(getFirstValue(row, ["gst", "tax"]));
+        const stock = toStock(getFirstValue(row, ["stock"]));
+
+        const description = buildDescription(row);
+
+        /* ---------- BRAND ---------- */
 
         let brandId = null;
         if (brandName) {
@@ -153,59 +140,47 @@ export async function POST(request) {
             where: { name: brandName },
             update: {},
             create: { name: brandName },
-            select: { id: true },
           });
           brandId = brand.id;
         }
 
-        let existingProduct = null;
-        if (sku) {
-          existingProduct = await prisma.product.findUnique({
-            where: { sku },
-            select: { id: true, stock: true },
-          });
-        }
+        /* ---------- CHECK EXISTING ---------- */
 
-        if (!existingProduct) {
-          existingProduct = await prisma.product.findFirst({
-            where: {
-              name,
-              brandId,
-            },
-            select: { id: true, stock: true },
-          });
-        }
+        const existing = await prisma.product.findUnique({
+          where: { itemCode: finalItemCode },
+        });
 
-        const payload = {
+        const data = {
+          itemCode: finalItemCode,
           name,
           sku,
           description,
+          category,
+          unit,
+          alertQty,
           unitPrice,
-          gstRate: gstRate || "0.00",
+          gstRate,
           costPrice,
           brandId,
-          ...(stock === null ? {} : { stock }),
+          stock: stock ?? 0,
         };
 
-        if (existingProduct) {
+        /* ---------- CREATE / UPDATE ---------- */
+
+        if (existing) {
           await prisma.product.update({
-            where: { id: existingProduct.id },
-            data: payload,
+            where: { itemCode },
+            data,
           });
-          updated += 1;
+          updated++;
         } else {
-          await prisma.product.create({
-            data: {
-              ...payload,
-              stock: stock ?? 0,
-            },
-          });
-          created += 1;
+          await prisma.product.create({ data });
+          created++;
         }
-      } catch (error) {
+      } catch (err) {
         errors.push({
           row: rowNumber,
-          message: error?.message || "Unable to import row.",
+          message: err.message,
         });
       }
     }
@@ -220,7 +195,7 @@ export async function POST(request) {
       },
       errors,
     });
-  } catch (error) {
-    return handleRouteError(error, "Unable to import products.");
+  } catch (err) {
+    return handleRouteError(err, "Import failed");
   }
 }

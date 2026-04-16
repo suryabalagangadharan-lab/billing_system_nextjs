@@ -74,22 +74,34 @@ model Brand {
 }
 
 model Product {
-  id           String        @id @default(uuid()) @db.Char(36)
+  id           String   @id @default(uuid()) @db.Char(36)
+
+  itemCode     String   @unique        // ✅ NEW (Excel: Item Code)
   name         String
-  sku          String?       @unique
-  description  String?       @db.Text
-  unitPrice    Decimal       @db.Decimal(10, 2)
-  gstRate      Decimal       @default(0) @db.Decimal(5, 2)
-  costPrice    Decimal?      @db.Decimal(10, 2)
-  stock        Int           @default(0)
-  brandId      String?       @db.Char(36)
-  brand        Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  sku          String?  @unique
+  description  String?  @db.Text
+
+  category     String?               // ✅ NEW
+  unit         String?               // ✅ NEW (PCS, KIT, etc)
+  alertQty     Int      @default(0)  // ✅ NEW
+
+  unitPrice    Decimal  @db.Decimal(10, 2)
+  gstRate      Decimal  @default(0) @db.Decimal(5, 2)
+  costPrice    Decimal? @db.Decimal(10, 2)
+
+  stock        Int      @default(0)
+
+  brandId      String?  @db.Char(36)
+  brand        Brand?   @relation(fields: [brandId], references: [id])
+
   purchases    Purchase[]
   stockLogs    StockLog[]
   invoiceItems InvoiceItem[]
   serviceItems ServiceItem[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Purchase {

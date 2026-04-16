@@ -21,166 +21,107 @@ export async function GET(request) {
     const month = query.month;
     const { start, end } = getMonthRange(month);
 
-    const [invoices, purchases, serviceJobs] = await Promise.all([
-      prisma.invoice.findMany({
-        where: {
-          createdAt: {
-            gte: start,
-            lt: end,
-          },
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        createdAt: {
+          gte: start,
+          lt: end,
         },
-        select: {
-          gstAmount: true,
-          profitAmount: true,
-          totalAmount: true,
-          createdAt: true,
-        },
-      }),
-      prisma.purchase.findMany({
-        where: {
-          createdAt: {
-            gte: start,
-            lt: end,
-          },
-        },
-        select: {
-          totalCost: true,
-          createdAt: true,
-        },
-      }),
-      prisma.serviceJob.findMany({
-        where: {
-          createdAt: {
-            gte: start,
-            lt: end,
-          },
-        },
-        select: {
-          totalAmount: true,
-          profitAmount: true,
-          createdAt: true,
-        },
-      }),
-    ]);
+      },
+      include: { customer: true },
+      orderBy: { createdAt: "asc" },
+    });
 
-    const breakdownMap = new Map();
-
-    for (const invoice of invoices) {
-      const key = invoice.createdAt.toISOString().slice(0, 10);
-      const row = breakdownMap.get(key) || {
-        date: key,
-        invoiceRevenue: 0,
-        gstCollected: 0,
-        invoiceProfit: 0,
-        purchaseSpend: 0,
-        serviceRevenue: 0,
-        serviceProfit: 0,
-        totalProfit: 0,
-      };
-
-      row.invoiceRevenue += Number(invoice.totalAmount);
-      row.gstCollected += Number(invoice.gstAmount);
-      row.invoiceProfit += Number(invoice.profitAmount);
-      row.totalProfit += Number(invoice.profitAmount);
-      breakdownMap.set(key, row);
+    function formatDate(d) {
+      if (!d) return "";
+      const dt = new Date(d);
+      const dd = String(dt.getDate()).padStart(2, "0");
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const yyyy = dt.getFullYear();
+      return `${dd}-${mm}-${yyyy}`;
     }
 
-    for (const purchase of purchases) {
-      const key = purchase.createdAt.toISOString().slice(0, 10);
-      const row = breakdownMap.get(key) || {
-        date: key,
-        invoiceRevenue: 0,
-        gstCollected: 0,
-        invoiceProfit: 0,
-        purchaseSpend: 0,
-        serviceRevenue: 0,
-        serviceProfit: 0,
-        totalProfit: 0,
+    const invoiceRows = invoices.map((inv, idx) => {
+      const discount = Number(inv.discount ?? 0) || 0;
+      const rate = Number(inv.subtotal ?? 0);
+      const gstAmount = Number(inv.gstAmount ?? 0);
+      const gstRate = Number(inv.gstRate ?? 0);
+      const cgst = gstAmount / 2;
+      const sgst = gstAmount / 2;
+      const igst = 0;
+      const finalTotal = Number(inv.totalAmount ?? 0);
+      const roundOff = Number((finalTotal - (rate + gstAmount - discount)).toFixed(2));
+
+      return {
+        serial: idx + 1,
+        invoiceNumber: inv.invoiceNumber,
+        createdDate: formatDate(inv.createdAt),
+        createdAtRaw: inv.createdAt,
+        customerName: (inv.customer && inv.customer.name) || inv.customerName || "",
+        customerGst: (inv.customer && inv.customer.gstNumber) || "",
+        rate: rate,
+        discount: discount,
+        gstLabel: `GST${Number(gstRate)}%`,
+        gstRate: gstRate,
+        cgst: cgst,
+        sgst: sgst,
+        igst: igst,
+        roundOff: roundOff,
+        finalTotal: finalTotal,
       };
-
-      row.purchaseSpend += Number(purchase.totalCost);
-      breakdownMap.set(key, row);
-    }
-
-    for (const serviceJob of serviceJobs) {
-      const key = serviceJob.createdAt.toISOString().slice(0, 10);
-      const row = breakdownMap.get(key) || {
-        date: key,
-        invoiceRevenue: 0,
-        gstCollected: 0,
-        invoiceProfit: 0,
-        purchaseSpend: 0,
-        serviceRevenue: 0,
-        serviceProfit: 0,
-        totalProfit: 0,
-      };
-
-      row.serviceRevenue += Number(serviceJob.totalAmount);
-      row.serviceProfit += Number(serviceJob.profitAmount);
-      row.totalProfit += Number(serviceJob.profitAmount);
-      breakdownMap.set(key, row);
-    }
-
-    const breakdown = Array.from(breakdownMap.values())
-      .sort((left, right) => left.date.localeCompare(right.date))
-      .map((entry) => ({
-        ...entry,
-        invoiceRevenue: entry.invoiceRevenue.toFixed(2),
-        gstCollected: entry.gstCollected.toFixed(2),
-        invoiceProfit: entry.invoiceProfit.toFixed(2),
-        purchaseSpend: entry.purchaseSpend.toFixed(2),
-        serviceRevenue: entry.serviceRevenue.toFixed(2),
-        serviceProfit: entry.serviceProfit.toFixed(2),
-        totalProfit: entry.totalProfit.toFixed(2),
-      }));
+    });
 
     const summary = {
-      invoiceRevenue: sumMoney(invoices.map((invoice) => invoice.totalAmount)).toFixed(2),
-      gstCollected: sumMoney(invoices.map((invoice) => invoice.gstAmount)).toFixed(2),
-      profitAmount: sumMoney(invoices.map((invoice) => invoice.profitAmount)).toFixed(2),
-      invoiceProfit: sumMoney(invoices.map((invoice) => invoice.profitAmount)).toFixed(2),
-      purchaseSpend: sumMoney(purchases.map((purchase) => purchase.totalCost)).toFixed(2),
-      serviceRevenue: sumMoney(serviceJobs.map((job) => job.totalAmount)).toFixed(2),
-      serviceProfit: sumMoney(serviceJobs.map((job) => job.profitAmount)).toFixed(2),
-      totalProfit: (
-        sumMoney(invoices.map((invoice) => invoice.profitAmount)) +
-        sumMoney(serviceJobs.map((job) => job.profitAmount))
-      ).toFixed(2),
+      totalInvoiceAmount: sumMoney(invoices.map((i) => i.totalAmount)).toFixed(2),
+      totalGst: sumMoney(invoices.map((i) => i.gstAmount)).toFixed(2),
+      totalCgst: sumMoney(invoices.map((i) => Number(i.gstAmount ?? 0) / 2)).toFixed(2),
+      totalSgst: sumMoney(invoices.map((i) => Number(i.gstAmount ?? 0) / 2)).toFixed(2),
       invoiceCount: invoices.length,
-      purchaseCount: purchases.length,
-      serviceCount: serviceJobs.length,
     };
     const reportMonth = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
 
     if (format === "xlsx") {
-      const rows = breakdown.map((entry) => ({
-        Date: entry.date,
-        "Invoice Revenue": Number(entry.invoiceRevenue),
-        "GST Collected": Number(entry.gstCollected),
-        "Purchase Spend": Number(entry.purchaseSpend),
-        "Service Revenue": Number(entry.serviceRevenue),
-        "Service Profit": Number(entry.serviceProfit),
-        "Total Profit": Number(entry.totalProfit),
+      const rows = invoiceRows.map((r) => ({
+        "#": r.serial,
+        "Invoice Number": r.invoiceNumber,
+        "Created Date": r.createdDate,
+        "Customer Name": r.customerName,
+        "Customer GST Number": r.customerGst,
+        "Rate": Number(r.rate).toFixed(2),
+        "Discount Amount": Number(r.discount).toFixed(2),
+        "GST %": r.gstLabel,
+        "CGST Amount": Number(r.cgst).toFixed(2),
+        "SGST Amount": Number(r.sgst).toFixed(2),
+        "IGST Amount": Number(r.igst).toFixed(2),
+        "Round Off": Number(r.roundOff).toFixed(2),
+        "Final Invoice Total": Number(r.finalTotal).toFixed(2),
       }));
 
+      // add summary row
       rows.push({});
       rows.push({
-        Date: "Summary",
-        "Invoice Revenue": Number(summary.invoiceRevenue),
-        "GST Collected": Number(summary.gstCollected),
-        "Purchase Spend": Number(summary.purchaseSpend),
-        "Service Revenue": Number(summary.serviceRevenue),
-        "Service Profit": Number(summary.serviceProfit),
-        "Total Profit": Number(summary.totalProfit),
+        "#": "",
+        "Invoice Number": "",
+        "Created Date": "",
+        "Customer Name": "",
+        "Customer GST Number": "Totals",
+        "Rate": "",
+        "Discount Amount": "",
+        "GST %": "",
+        "CGST Amount": summary.totalCgst,
+        "SGST Amount": summary.totalSgst,
+        "IGST Amount": 0,
+        "Round Off": "",
+        "Final Invoice Total": summary.totalInvoiceAmount,
       });
 
-      const workbook = createWorkbookBuffer("Monthly Report", rows);
-      return new NextResponse(workbook, {
+      const buffer = createWorkbookBuffer("Monthly Sales Report", rows);
+
+      return new NextResponse(buffer, {
         status: 200,
         headers: {
-          "Content-Type":
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=\"monthly-sales-${reportMonth}.xlsx\"`,
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="monthly-sales-${reportMonth}.xlsx"`,
         },
       });
     }
@@ -188,7 +129,21 @@ export async function GET(request) {
     return NextResponse.json({
       month: reportMonth,
       summary,
-      breakdown,
+      invoices: invoiceRows.map((r) => ({
+        serial: r.serial,
+        invoiceNumber: r.invoiceNumber,
+        createdDate: r.createdDate,
+        customerName: r.customerName,
+        customerGst: r.customerGst,
+        rate: Number(r.rate).toFixed(2),
+        discount: Number(r.discount).toFixed(2),
+        gst: r.gstLabel,
+        cgst: Number(r.cgst).toFixed(2),
+        sgst: Number(r.sgst).toFixed(2),
+        igst: Number(r.igst).toFixed(2),
+        roundOff: Number(r.roundOff).toFixed(2),
+        finalTotal: Number(r.finalTotal).toFixed(2),
+      })),
     });
   } catch (error) {
     return handleRouteError(error, "Unable to generate monthly report.");
