@@ -10,11 +10,24 @@ export const dynamic = "force-dynamic";
 /* ---------------- HELPERS ---------------- */
 
 function getFirstValue(row, keys) {
+  const normalizedRow = {};
+
+  for (const key in row) {
+    normalizedRow[key.toLowerCase().trim()] = row[key];
+  }
+
   for (const key of keys) {
-    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
-      return row[key];
+    const k = key.toLowerCase().trim();
+
+    if (
+      normalizedRow[k] !== undefined &&
+      normalizedRow[k] !== null &&
+      String(normalizedRow[k]).trim() !== ""
+    ) {
+      return normalizedRow[k];
     }
   }
+
   return null;
 }
 
@@ -100,9 +113,22 @@ if (!finalItemCode) {
   finalItemCode = `AUTO-${Date.now()}-${i}`;
 }
 
-        const name = toOptionalText(
-          getFirstValue(row, ["itemname", "name", "product"])
-        );
+        function cleanProductName(raw) {
+  if (!raw) return null;
+
+  let name = String(raw);
+
+  // remove HSN part
+  name = name.replace(/HSN\s*:?[\w.]+/gi, "");
+
+  // remove SKU part
+  name = name.replace(/SKU\s*:?[\w-]*/gi, "");
+
+  return name.trim();
+}
+
+const rawName = getFirstValue(row, ["itemname", "name", "product"]);
+const name = toOptionalText(cleanProductName(rawName));
 
         if (!name) {
           skipped++;

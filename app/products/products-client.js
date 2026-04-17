@@ -35,9 +35,7 @@ function Stat({ label, value, sub }) {
       <p className="text-2xl font-semibold text-slate-900 tracking-tight">
         {value}
       </p>
-      {sub && (
-        <p className="text-xs font-mono text-slate-400 mt-0.5">{sub}</p>
-      )}
+      {sub && <p className="text-xs font-mono text-slate-400 mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -76,6 +74,10 @@ export default function ProductsClient() {
   const [pageSize, setPageSize] = useState(10);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [gstCategory, setGstCategory] = useState("");
+  const [gstValue, setGstValue] = useState("");
+  const [updatingGst, setUpdatingGst] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const loadProducts = useCallback(async () => {
     try {
@@ -127,11 +129,14 @@ export default function ProductsClient() {
         alertQty: Number(form.alertQty || 0),
       };
 
-      const res = await fetch(editingId ? `/api/products/${editingId}` : "/api/products", {
-        method: editingId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payloadBody),
-      });
+      const res = await fetch(
+        editingId ? `/api/products/${editingId}` : "/api/products",
+        {
+          method: editingId ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadBody),
+        },
+      );
       const payload = await res.json();
       if (!res.ok)
         throw new Error(payload.error || "Unable to create product.");
@@ -147,7 +152,9 @@ export default function ProductsClient() {
     } catch (e) {
       setError(e.message);
       pushToast({
-        title: editingId ? "Could not update product" : "Could not create product",
+        title: editingId
+          ? "Could not update product"
+          : "Could not create product",
         description: e.message,
         tone: "error",
       });
@@ -162,12 +169,21 @@ export default function ProductsClient() {
     try {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
       const payload = await res.json();
-      if (!res.ok) throw new Error(payload.error || "Unable to delete product.");
+      if (!res.ok)
+        throw new Error(payload.error || "Unable to delete product.");
 
-      pushToast({ title: "Product deleted", description: `${payload.deletedId}`, tone: "success" });
+      pushToast({
+        title: "Product deleted",
+        description: `${payload.deletedId}`,
+        tone: "success",
+      });
       await loadProducts();
     } catch (e) {
-      pushToast({ title: "Delete failed", description: e.message, tone: "error" });
+      pushToast({
+        title: "Delete failed",
+        description: e.message,
+        tone: "error",
+      });
     }
   }
 
@@ -233,23 +249,29 @@ export default function ProductsClient() {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     return products.filter((p) => {
       const matchSearch =
         !q ||
-        [p.name, p.sku, p.brand?.name]
+        [p.name, p.sku, p.brand?.name, p.category]
           .filter(Boolean)
           .join(" ")
           .toLowerCase()
           .includes(q);
+
       const matchStock =
         stockFilter === "all"
           ? true
           : stockFilter === "low"
-          ? p.stock <= 5
-          : p.stock === 0;
-      return matchSearch && matchStock;
+            ? p.stock <= 5
+            : p.stock === 0;
+
+      const matchCategory =
+        categoryFilter === "all" ? true : p.category === categoryFilter;
+
+      return matchSearch && matchStock && matchCategory;
     });
-  }, [products, search, stockFilter]);
+  }, [products, search, stockFilter, categoryFilter]);
 
   const totalPages = Math.ceil(visible.length / pageSize);
 
@@ -285,7 +307,26 @@ export default function ProductsClient() {
     "Actions",
   ];
 
-  const COL_WIDTHS = ["9%", "22%", "11%", "11%", "7%", "7%", "7%", "14%", "12%", "7%"];
+  const COL_WIDTHS = [
+    "9%",
+    "22%",
+    "11%",
+    "11%",
+    "7%",
+    "7%",
+    "7%",
+    "14%",
+    "12%",
+    "7%",
+  ];
+
+  const categories = useMemo(() => {
+    const set = new Set();
+    products.forEach((p) => {
+      if (p.category) set.add(p.category);
+    });
+    return Array.from(set).sort();
+  }, [products]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8">
@@ -296,6 +337,96 @@ export default function ProductsClient() {
             Inventory Desk
           </p>
           <h1 className="text-xl font-semibold text-slate-900">Products</h1>
+        </div>
+        <div className="border border-slate-200 rounded-sm p-4 mb-4 bg-white">
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold mb-3">
+            Update GST by Category
+          </p>
+
+          <div className="flex gap-3 items-end flex-wrap">
+            {/* Category Dropdown */}
+            <div>
+              <label className="text-[10px] font-mono text-slate-500 uppercase">
+                Category
+              </label>
+              <select
+                value={gstCategory}
+                onChange={(e) => setGstCategory(e.target.value)}
+                className="block mt-1 border border-slate-200 px-3 py-2 text-xs font-mono bg-white"
+              >
+                <option value="">Select category</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* GST Input */}
+            <div>
+              <label className="text-[10px] font-mono text-slate-500 uppercase">
+                GST %
+              </label>
+              <input
+                type="number"
+                value={gstValue}
+                onChange={(e) => setGstValue(e.target.value)}
+                placeholder="18"
+                className="block mt-1 border border-slate-200 px-3 py-2 text-xs font-mono"
+              />
+            </div>
+
+            {/* Button */}
+            <button
+              onClick={async () => {
+                if (!gstCategory || !gstValue) {
+                  alert("Select category and GST");
+                  return;
+                }
+
+                if (
+                  !confirm(`Update GST to ${gstValue}% for "${gstCategory}"?`)
+                )
+                  return;
+
+                try {
+                  setUpdatingGst(true);
+
+                  const res = await fetch(
+                    "/api/products/update-gst-by-category",
+                    {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        category: gstCategory,
+                        gstRate: gstValue,
+                      }),
+                    },
+                  );
+
+                  const data = await res.json();
+
+                  if (!res.ok) throw new Error(data.error);
+
+                  alert(`${data.updatedCount} products updated`);
+
+                  setGstCategory("");
+                  setGstValue("");
+
+                  await loadProducts(); // refresh table
+                } catch (err) {
+                  alert(err.message);
+                } finally {
+                  setUpdatingGst(false);
+                }
+              }}
+              disabled={updatingGst}
+              className="border border-slate-900 text-slate-900 px-4 py-2 text-xs font-mono hover:bg-slate-900 hover:text-white"
+            >
+              {updatingGst ? "Updating..." : "Update GST"}
+            </button>
+          </div>
         </div>
         <button
           onClick={() => {
@@ -341,6 +472,18 @@ export default function ProductsClient() {
           <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold">
             Product List
           </p>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-slate-900 bg-white"
+          >
+            <option value="all">All categories</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
           <div className="flex gap-2 flex-wrap items-center">
             <input
               value={search}
@@ -422,12 +565,19 @@ export default function ProductsClient() {
 
                     {/* Name / SKU */}
                     <td className="px-3 py-3 overflow-hidden">
-                      <p className="font-medium text-sm text-slate-900 ">
-                        {p.name}
-                      </p>
-                      <p className="text-[11px] font-mono text-slate-400 ">
-                        {p.sku || "—"}
-                      </p>
+                      <div className="space-y-[2px]">
+                        <p className="text-sm font-semibold text-blue-600 leading-tight cursor-pointer hover:underline">
+                          {p.name}
+                        </p>
+
+                        <p className="text-[11px] font-mono text-slate-700">
+                          HSN:{p.itemCode || "—"}
+                        </p>
+
+                        <p className="text-[11px] font-mono text-slate-700">
+                          SKU:
+                        </p>
+                      </div>
                     </td>
 
                     {/* Brand */}
@@ -692,7 +842,11 @@ export default function ProductsClient() {
                 disabled={saving}
                 className="w-full bg-slate-900 text-white text-xs font-mono py-3 rounded-sm hover:bg-slate-700 transition-colors disabled:opacity-50"
               >
-                {saving ? "saving..." : editingId ? "save changes →" : "create product →"}
+                {saving
+                  ? "saving..."
+                  : editingId
+                    ? "save changes →"
+                    : "create product →"}
               </button>
             </form>
 
@@ -709,9 +863,7 @@ export default function ProductsClient() {
                   <input
                     type="file"
                     accept=".xlsx,.xls"
-                    onChange={(e) =>
-                      setImportFile(e.target.files?.[0] || null)
-                    }
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                     className="mt-1.5 w-full border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-700 bg-white file:mr-3 file:bg-slate-100 file:border-0 file:px-3 file:py-1.5 file:text-xs file:font-mono file:rounded-sm file:text-slate-700 outline-none"
                   />
                 </label>
