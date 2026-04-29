@@ -5,7 +5,7 @@ export default async function LoginPage({ searchParams }) {
   const redirectTo =
     typeof params?.redirectTo === "string" && params.redirectTo.startsWith("/")
       ? params.redirectTo
-      : "/dashboard";
+      : "/";
 
   return (
     <section className="mx-auto flex min-h-screen max-w-md items-center px-6 py-16">

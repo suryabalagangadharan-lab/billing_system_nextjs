@@ -308,16 +308,16 @@ export default function ProductsClient() {
   ];
 
   const COL_WIDTHS = [
+    "10%",
+    "24%",
     "9%",
-    "22%",
-    "11%",
-    "11%",
-    "7%",
-    "7%",
-    "7%",
-    "14%",
+    "9%",
+    "6%",
+    "6%",
+    "5%",
     "12%",
-    "7%",
+    "9%",
+    "10%",
   ];
 
   const categories = useMemo(() => {
@@ -472,7 +472,9 @@ export default function ProductsClient() {
           <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold">
             Product List
           </p>
-          <select
+          
+          <div className="flex gap-2 flex-wrap items-center">
+            <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
             className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-slate-900 bg-white"
@@ -484,7 +486,6 @@ export default function ProductsClient() {
               </option>
             ))}
           </select>
-          <div className="flex gap-2 flex-wrap items-center">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -516,9 +517,9 @@ export default function ProductsClient() {
         </div>
 
         {/* Table */}
-        <div className="w-full overflow-x-auto border border-slate-100 rounded-sm">
+        <div className="w-full overflow-hidden border border-slate-100 rounded-sm">
           <table
-            className="w-full border-collapse"
+            className="w-full border-collapse table-fixed"
             style={{ tableLayout: "fixed" }}
           >
             <colgroup>
@@ -531,7 +532,7 @@ export default function ProductsClient() {
                 {COL_HEADERS.map((h) => (
                   <th
                     key={h}
-                    className="text-left px-3 py-2.5 text-[10px] font-mono uppercase tracking-[0.15em] text-slate-400 font-normal whitespace-nowrap overflow-hidden"
+                    className="text-left px-2 py-2.5 text-[10px] font-mono uppercase tracking-[0.15em] text-slate-400 font-normal whitespace-nowrap overflow-hidden"
                   >
                     {h}
                   </th>
@@ -541,7 +542,7 @@ export default function ProductsClient() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="p-4">
+                  <td colSpan={10} className="p-4">
                     <div className="space-y-3">
                       {[1, 2, 3].map((i) => (
                         <div
@@ -559,14 +560,14 @@ export default function ProductsClient() {
                     className="border-t border-slate-100 hover:bg-slate-50 transition-colors"
                   >
                     {/* Code */}
-                    <td className="px-3 py-3 text-xs font-mono text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap">
+                    <td className="px-2 py-3 text-xs font-mono text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap">
                       {p.itemCode || "—"}
                     </td>
 
                     {/* Name / SKU */}
-                    <td className="px-3 py-3 overflow-hidden">
-                      <div className="space-y-[2px]">
-                        <p className="text-sm font-semibold text-blue-600 leading-tight cursor-pointer hover:underline">
+                    <td className="px-2 py-3 overflow-hidden">
+                      <div className="space-y-[2px] min-w-0">
+                        <p className="truncate text-sm font-semibold text-blue-600 leading-tight cursor-pointer hover:underline">
                           {p.name}
                         </p>
 
@@ -581,23 +582,23 @@ export default function ProductsClient() {
                     </td>
 
                     {/* Brand */}
-                    <td className="px-3 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                    <td className="px-2 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
                       {p.brand?.name || "—"}
                     </td>
 
                     {/* Category */}
-                    <td className="px-3 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                    <td className="px-2 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
                       {p.category || "—"}
                     </td>
 
                     {/* Unit */}
-                    <td className="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
+                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
                       {p.unit || "—"}
                     </td>
 
                     {/* Stock */}
                     <td
-                      className={`px-3 py-3 text-sm font-mono font-semibold whitespace-nowrap ${
+                      className={`px-2 py-3 text-sm font-mono font-semibold whitespace-nowrap ${
                         p.stock <= p.alertQty
                           ? "text-red-600"
                           : "text-slate-700"
@@ -607,31 +608,31 @@ export default function ProductsClient() {
                     </td>
 
                     {/* Alert */}
-                    <td className="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
+                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
                       {p.alertQty}
                     </td>
 
                     {/* Price */}
-                    <td className="px-3 py-3 text-sm font-mono font-medium text-slate-900 overflow-hidden text-ellipsis whitespace-nowrap">
+                    <td className="px-2 py-3 text-sm font-mono font-medium text-slate-900 overflow-hidden text-ellipsis whitespace-nowrap">
                       {fmt(p.unitPrice)}
                     </td>
 
                     {/* Tax */}
-                    <td className="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
+                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
                       GST {p.gstRate}%
                     </td>
                     {/* Actions */}
-                    <td className="px-3 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
-                      <div className="flex gap-2">
+                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
+                      <div className="flex flex-col gap-1 min-w-[72px]">
                         <button
                           onClick={() => handleEdit(p)}
-                          className="px-2 py-1 text-xs border border-slate-200 rounded-sm hover:bg-slate-50"
+                          className="w-full px-2 py-1 text-[11px] border border-slate-200 rounded-sm hover:bg-slate-50"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => handleDelete(p.id)}
-                          className="px-2 py-1 text-xs border border-rose-200 text-rose-600 rounded-sm hover:bg-rose-50"
+                          className="w-full px-2 py-1 text-[11px] border border-rose-200 text-rose-600 rounded-sm hover:bg-rose-50"
                         >
                           Delete
                         </button>
@@ -642,7 +643,7 @@ export default function ProductsClient() {
               ) : (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-4 py-8 text-xs font-mono text-slate-400 text-center"
                   >
                     No products match current filters.

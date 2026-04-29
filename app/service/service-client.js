@@ -36,9 +36,11 @@ function Stat({ label, value, sub }) {
 export default function ServiceClient() {
   const { pushToast } = useToast();
   const [products, setProducts] = useState([]);
+  const [serviceJobs, setServiceJobs] = useState([]);
   const [parts, setParts] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [partSearch, setPartSearch] = useState("");
+  const [serviceSearch, setServiceSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -46,11 +48,40 @@ export default function ServiceClient() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/products")
-      .then((r) => r.json())
-      .then((payload) => { if (active) setProducts(payload.products || []); })
-      .catch((e) => { if (active) { setError(e.message); pushToast({ title: "Parts unavailable", description: e.message, tone: "error" }); } })
-      .finally(() => { if (active) setLoading(false); });
+
+    Promise.allSettled([
+      fetch("/api/products", { cache: "no-store" }).then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Unable to load parts.");
+        return payload;
+      }),
+      fetch("/api/service", { cache: "no-store" }).then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Unable to load services.");
+        return payload;
+      }),
+    ]).then(([productsResult, servicesResult]) => {
+      if (!active) return;
+
+      if (productsResult.status === "fulfilled") {
+        setProducts(productsResult.value.products || []);
+      } else {
+        const message = productsResult.reason?.message || "Unable to load parts.";
+        setError(message);
+        pushToast({ title: "Parts unavailable", description: message, tone: "error" });
+      }
+
+      if (servicesResult.status === "fulfilled") {
+        setServiceJobs(servicesResult.value.serviceJobs || []);
+      } else {
+        const message = servicesResult.reason?.message || "Unable to load services.";
+        setError((current) => current || message);
+        pushToast({ title: "Service list unavailable", description: message, tone: "error" });
+      }
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+
     return () => { active = false; };
   }, [pushToast]);
 
@@ -69,6 +100,13 @@ export default function ServiceClient() {
   const totalCharge = partsTotal + labour;
 
   const lowStock = products.filter((p) => p.stock <= 5).slice(0, 4);
+  const filteredServices = serviceJobs.filter((job) =>
+    [job.jobNumber, job.customerName, job.customerPhone, job.deviceName, job.deviceModel, job.status, job.complaint, job.diagnosis]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(serviceSearch.trim().toLowerCase())
+  );
   const filteredCatalog = products.filter((p) =>
     [p.name, p.sku, p.brand?.name].filter(Boolean).join(" ").toLowerCase().includes(partSearch.trim().toLowerCase())
   );
@@ -85,6 +123,7 @@ export default function ServiceClient() {
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.error || "Unable to create service job.");
       setForm(initialForm); setParts([]);
+      setServiceJobs((current) => [payload.serviceJob, ...current].filter(Boolean));
       setSuccess(`Job ${payload.serviceJob.jobNumber} created.`);
       pushToast({ title: "Service job created", description: payload.serviceJob.jobNumber, tone: "success" });
     } catch (e) {
@@ -226,6 +265,132 @@ export default function ServiceClient() {
               <span>Total estimate</span><span>{fmt(totalCharge)}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="mt-6 border border-slate-200 rounded-sm bg-white p-5">
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-1">Service register</p>
+            <h2 className="text-lg font-semibold text-slate-900">All services on this page</h2>
+          </div>
+          <input
+            value={serviceSearch}
+            onChange={(e) => setServiceSearch(e.target.value)}
+            placeholder="Search jobs..."
+            className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-900 outline-none focus:border-slate-900 bg-white placeholder:text-slate-300 w-full sm:w-72"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4">
+          <Stat label="Total jobs" value={serviceJobs.length} sub="Recorded on page" />
+          <Stat label="Pending" value={serviceJobs.filter((job) => job.status === "pending").length} sub="Open jobs" />
+          <Stat label="In progress" value={serviceJobs.filter((job) => job.status === "in_progress").length} sub="Active work" />
+          <Stat label="Done" value={serviceJobs.filter((job) => job.status === "completed" || job.status === "delivered").length} sub="Closed jobs" />
+        </div>
+
+        <div className="space-y-3">
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-slate-100 rounded-sm animate-pulse" />)}
+            </div>
+          ) : filteredServices.length ? (
+            filteredServices.map((job) => (
+              <details key={job.id} className="rounded-sm border border-slate-200 bg-slate-50">
+                <summary className="grid cursor-pointer list-none gap-3 px-4 py-4 md:grid-cols-[1.1fr_1.2fr_1.2fr_0.8fr_auto] md:items-center">
+                  <div>
+                    <p className="font-mono text-sm font-semibold text-slate-900">{job.jobNumber}</p>
+                    <p className="mt-0.5 text-xs font-mono text-slate-400">
+                      {new Date(job.createdAt).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{job.customerName}</p>
+                    <p className="truncate text-xs font-mono text-slate-400">{job.customerPhone || "No phone"}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-slate-700">{job.deviceName}</p>
+                    <p className="truncate text-xs font-mono text-slate-400">{job.deviceModel || "No model"}</p>
+                  </div>
+                  <div className="text-sm font-semibold text-slate-900">{fmt(job.totalAmount)}</div>
+                  <span
+                    className={`w-fit rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      job.status === "completed" || job.status === "delivered"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : job.status === "in_progress"
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {job.status || "pending"}
+                  </span>
+                </summary>
+
+                <div className="border-t border-slate-200 px-4 py-4">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400">Complaint</p>
+                        <p className="mt-1 text-sm text-slate-700">{job.complaint || "No complaint recorded."}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400">Diagnosis</p>
+                        <p className="mt-1 text-sm text-slate-700">{job.diagnosis || "No diagnosis recorded."}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-2">Parts used</p>
+                        {job.items?.length ? (
+                          <div className="space-y-2">
+                            {job.items.map((item) => (
+                              <div key={item.id} className="flex items-center justify-between rounded-sm border border-slate-100 bg-white px-3 py-2.5">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">{item.description}</p>
+                                  <p className="text-xs font-mono text-slate-400">Qty {item.quantity}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-semibold text-slate-900">{fmt(item.total)}</p>
+                                  <p className="text-xs font-mono text-slate-400">{fmt(item.unitPrice)} each</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500">No parts used.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-sm border border-slate-100 bg-white p-4 space-y-2">
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>Parts cost</span>
+                        <span>{fmt(job.partsCost)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>Labour</span>
+                        <span>{fmt(job.serviceCharge)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
+                        <span>Total estimate</span>
+                        <span>{fmt(job.totalAmount)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>Assigned to</span>
+                        <span>{job.assignedTo?.name || "Unassigned"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            ))
+          ) : (
+            <div className="border border-dashed border-slate-200 rounded-sm px-4 py-8 text-xs font-mono text-slate-400 text-center">
+              No service jobs found.
+            </div>
+          )}
         </div>
       </div>
     </main>

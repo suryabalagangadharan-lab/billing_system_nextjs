@@ -45,7 +45,12 @@ export async function GET(request, context) {
       return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
     }
 
-    return NextResponse.json({ invoice });
+    return NextResponse.json({
+      invoice: {
+        ...invoice,
+        labourCharge: Number(invoice.totalAmount || 0) - Number(invoice.subtotal || 0) - Number(invoice.gstAmount || 0),
+      },
+    });
   } catch (error) {
     return handleRouteError(error, "Unable to fetch invoice.");
   }
