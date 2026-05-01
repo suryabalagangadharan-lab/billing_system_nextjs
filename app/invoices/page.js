@@ -4,6 +4,41 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
+function fmt(value) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function isoDate(value) {
+  return new Date(value).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    paid:     "bg-emerald-50 text-emerald-700 border-emerald-200",
+    pending:  "bg-amber-50 text-amber-700 border-amber-200",
+    draft:    "bg-slate-50 text-slate-400 border-slate-200",
+    overdue:  "bg-red-50 text-red-700 border-red-200",
+  };
+  const label = status ?? "draft";
+  return (
+    <span
+      className={`text-[12px] font-medium px-2 py-0.5 rounded-full border ${
+        map[label] || map.draft
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export default async function InvoicesPage() {
   await requireAuth();
 
@@ -13,149 +48,227 @@ export default async function InvoicesPage() {
     include: { customer: true },
   });
 
+  const totalRevenue = invoices.reduce(
+    (sum, inv) => sum + Number(inv.totalAmount || 0),
+    0
+  );
+  const paidCount = invoices.filter((inv) => inv.status === "paid").length;
+  const pendingCount = invoices.filter((inv) => inv.status === "pending").length;
+  const draftCount = invoices.filter(
+    (inv) => !inv.status || inv.status === "draft"
+  ).length;
+
   return (
-    <main className="min-h-screen bg-white px-6 py-10 max-w-5xl mx-auto">
-      {/* Top bar */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-10">
-        <span className="text-xs font-mono tracking-widest text-slate-400 uppercase">
-          ops/<span className="text-slate-900 font-semibold">hub</span>
-        </span>
-        <div className="flex items-center gap-5">
-          <span className="text-xs font-mono text-slate-400 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-            online
+    <div className="min-h-screen bg-slate-50">
+
+      {/* ── Top bar ── */}
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-screen-xl mx-auto px-6 h-[52px] flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-2 h-2 rounded-full bg-blue-600" />
+            <span className="text-[15px] font-medium text-slate-900">OpsHub</span>
+            <span className="text-slate-300 mx-1">/</span>
+            <span className="text-[14px] font-medium text-slate-900">Invoices</span>
+          </div>
+          <div className="flex-1" />
+          <span className="text-[13px] text-slate-400">
+            {invoices.length} invoices · last 20
           </span>
-          <Link
-            href="/"
-            className="text-xs font-mono px-3 py-1.5 border border-slate-200 rounded-sm text-slate-500 hover:bg-slate-50 transition-colors no-underline"
-          >
-            ← home
-          </Link>
-        </div>
-      </div>
-
-      {/* Hero */}
-      <div className="mb-8">
-        <p className="text-xs font-mono tracking-[0.25em] text-slate-400 uppercase mb-3">
-          Billing &amp; Operations
-        </p>
-        <h1 className="text-3xl font-light text-slate-900 tracking-tight mb-2">
-          Recent invoices,{" "}
-          <span className="font-semibold">ready to print.</span>
-        </h1>
-        <p className="text-xs font-mono text-slate-400">
-          Showing last 20 · sorted by date
-        </p>
-      </div>
-
-      {/* Table header */}
-      <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_auto] px-5 py-2 mb-px">
-        {["Invoice", "Customer", "Date", "Amount", ""].map((h) => (
-          <span key={h} className="text-[10px] font-mono tracking-widest uppercase text-slate-400">
-            {h}
-          </span>
-        ))}
-      </div>
-
-      {/* Invoice grid */}
-      <div
-        className="flex flex-col mb-6 rounded-sm overflow-hidden"
-        style={{ gap: "1px", background: "#e2e8f0", border: "1px solid #e2e8f0" }}
-      >
-        {invoices.length === 0 && (
-          <div className="bg-white px-5 py-10 text-center text-xs font-mono text-slate-400">
-            no invoices found.
-          </div>
-        )}
-
-        {invoices.map((inv) => (
-          <div
-            key={inv.id}
-            className="grid grid-cols-[2fr_1.5fr_1fr_1fr_auto] items-center bg-white px-5 py-4 hover:bg-slate-50 transition-colors group"
-          >
-            {/* Invoice number + status */}
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold text-slate-900">{inv.invoiceNumber}</span>
-              <span
-                className={`text-[9px] font-mono font-semibold tracking-widest uppercase px-1.5 py-0.5 rounded-sm border w-fit ${
-                  inv.status === "paid"
-                    ? "bg-green-50 text-green-700 border-green-200"
-                    : inv.status === "pending"
-                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                    : "bg-slate-50 text-slate-400 border-slate-200"
-                }`}
-              >
-                {inv.status ?? "draft"}
-              </span>
-            </div>
-
-            {/* Customer */}
-            <span className="text-xs text-slate-500 font-mono">
-              {inv.customer?.name ?? "—"}
-            </span>
-
-            {/* Date */}
-            <span className="text-xs text-slate-400 font-mono">
-              {new Date(inv.createdAt).toLocaleDateString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })}
-            </span>
-
-            {/* Amount */}
-            <span className="text-sm font-semibold text-slate-900 text-right">
-              ₹ {Number(inv.totalAmount).toLocaleString("en-IN")}
-            </span>
-
-            {/* Actions */}
-            <div className="flex gap-2 justify-end">
-              <Link
-                href={`/invoices/${inv.id}`}
-                className="text-[10px] font-mono px-3 py-1.5 bg-slate-900 text-white border border-slate-900 rounded-sm hover:bg-slate-700 transition-colors no-underline"
-              >
-                view
-              </Link>
-              <Link
-                href={`/invoices/${inv.id}?print=1`}
-                className="text-[10px] font-mono px-3 py-1.5 border border-slate-200 rounded-sm text-slate-500 hover:bg-slate-50 transition-colors no-underline"
-              >
-                print
-              </Link>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Shortcuts */}
-      <div className="flex flex-wrap gap-5 mb-10">
-        {[["G+I", "invoices"], ["↑↓", "navigate"], ["Enter", "view"], ["P", "print"], ["⌘K", "command bar"]].map(([k, label]) => (
-          <div key={k} className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
-            <kbd className="bg-slate-50 border border-slate-200 rounded-sm px-1.5 py-0.5 text-slate-500 text-[10px]">
-              {k}
-            </kbd>
-            {label}
-          </div>
-        ))}
-      </div>
-
-      {/* Bottom bar */}
-      <div className="flex items-center justify-between border-t border-slate-100 pt-5">
-        <span className="text-[10px] font-mono text-slate-300 tracking-widest uppercase">
-          Phase 1 · Next.js · Prisma · MySQL
-        </span>
-        <div className="flex gap-2">
-          <button className="text-xs font-mono px-3 py-1.5 border border-slate-200 rounded-sm text-slate-500 hover:bg-slate-50 transition-colors">
-            settings
-          </button>
           <Link
             href="/billing"
-            className="text-xs font-mono px-3 py-1.5 bg-slate-900 text-white rounded-sm hover:bg-slate-700 transition-colors no-underline"
+            className="text-[13px] font-medium px-3 py-1.5 bg-white border border-slate-200 text-white rounded-lg hover:bg-slate-200 transition-colors no-underline"
           >
-            new invoice →
+            New invoice →
           </Link>
         </div>
+      </header>
+
+      {/* ── Page title ── */}
+      <div className="max-w-screen-xl mx-auto px-6 pt-6 pb-2">
+        <h1 className="text-[19px] font-medium text-slate-900">Billing register</h1>
+        <p className="text-[13px] text-slate-400 mt-0.5">
+          Recent invoices sorted by date — view, print, or track payment status.
+        </p>
       </div>
-    </main>
+
+      {/* ── Stats ── */}
+      <div className="max-w-screen-xl mx-auto px-6 pt-4 pb-2">
+        <div className="grid grid-cols-4 bg-white border border-slate-200 rounded-xl overflow-hidden divide-x divide-slate-100">
+          {[
+            {
+              label: "Total billed",
+              value: fmt(totalRevenue),
+              sub: "Last 20 invoices",
+            },
+            {
+              label: "Paid",
+              value: paidCount,
+              sub: "Collected",
+              green: paidCount > 0,
+            },
+            {
+              label: "Pending",
+              value: pendingCount,
+              sub: "Awaiting payment",
+              warn: pendingCount > 0,
+            },
+            {
+              label: "Drafts",
+              value: draftCount,
+              sub: "Not yet sent",
+              blue: draftCount > 0,
+            },
+          ].map(({ label, value, sub, warn, blue, green }) => (
+            <div
+              key={label}
+              className={`px-5 py-4 ${
+                warn ? "bg-amber-50" : blue ? "bg-blue-50" : green ? "bg-emerald-50" : ""
+              }`}
+            >
+              <p
+                className={`text-[13px] font-medium tracking-wide uppercase mb-1 ${
+                  warn
+                    ? "text-amber-600"
+                    : blue
+                    ? "text-blue-600"
+                    : green
+                    ? "text-emerald-600"
+                    : "text-slate-400"
+                }`}
+              >
+                {label}
+              </p>
+              <p
+                className={`text-[20px] font-medium ${
+                  warn
+                    ? "text-amber-700"
+                    : blue
+                    ? "text-blue-700"
+                    : green
+                    ? "text-emerald-700"
+                    : "text-slate-900"
+                }`}
+              >
+                {value}
+              </p>
+              <p
+                className={`text-[12px] mt-0.5 ${
+                  warn
+                    ? "text-amber-500"
+                    : blue
+                    ? "text-blue-400"
+                    : green
+                    ? "text-emerald-500"
+                    : "text-slate-400"
+                }`}
+              >
+                {sub}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Invoice register ── */}
+      <div className="max-w-screen-xl mx-auto px-6 pt-4 pb-8">
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+
+          {/* Table header */}
+          <div
+            className="grid items-center px-5 py-3 bg-slate-50 border-b border-slate-100"
+            style={{ gridTemplateColumns: "1.6fr 1.4fr 1fr 1fr 0.8fr auto" }}
+          >
+            {["Invoice", "Customer", "Date", "Amount", "Status", ""].map((h) => (
+              <p
+                key={h}
+                className="text-[12px] font-medium text-slate-400 tracking-wide uppercase"
+              >
+                {h}
+              </p>
+            ))}
+          </div>
+
+          {/* Rows */}
+          {invoices.length === 0 ? (
+            <div className="py-14 text-center">
+              <p className="text-[14px] text-slate-300 mb-3">No invoices found.</p>
+              <Link
+                href="/billing"
+                className="text-[13px] px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors no-underline"
+              >
+                Create your first invoice →
+              </Link>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {invoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="grid items-center px-5 py-4 hover:bg-slate-50 transition-colors group"
+                  style={{ gridTemplateColumns: "1.6fr 1.4fr 1fr 1fr 0.8fr auto" }}
+                >
+                  {/* Invoice number */}
+                  <div>
+                    <p className="text-[14px] font-medium text-slate-900">
+                      {inv.invoiceNumber}
+                    </p>
+                    <p className="text-[12px] text-slate-400 mt-0.5">
+                      #{inv.id.slice(0, 8)}
+                    </p>
+                  </div>
+
+                  {/* Customer */}
+                  <div className="min-w-0 pr-4">
+                    <p className="text-[14px] text-slate-900 truncate">
+                      {inv.customer?.name ?? "—"}
+                    </p>
+                    {inv.customer?.phone && (
+                      <p className="text-[12px] text-slate-400 truncate">
+                        {inv.customer.phone}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Date */}
+                  <div>
+                    <p className="text-[13px] text-slate-700">
+                      {isoDate(inv.createdAt)}
+                    </p>
+                  </div>
+
+                  {/* Amount */}
+                  <div>
+                    <p className="text-[14px] font-medium text-slate-900">
+                      {fmt(inv.totalAmount)}
+                    </p>
+                  </div>
+
+                  {/* Status */}
+                  {/* <div>
+                    <StatusBadge status={inv.status} />
+                  </div> */}
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/invoices/${inv.id}`}
+                      className="text-[13px] font-medium px-3 py-1.5 bg-white border border-slate-200 text-white rounded-lg hover:bg-slate-200 transition-colors no-underline"
+                    >
+                      View
+                    </Link>
+                    <Link
+                      href={`/invoices/${inv.id}?print=1`}
+                      className="text-[13px] font-medium px-3 py-1.5 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-200 transition-colors no-underline"
+                    >
+                      Print
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

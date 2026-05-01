@@ -39,7 +39,7 @@ function calcItem(item) {
 
 function Label({ children }) {
   return (
-    <span className="block text-[10px] font-medium text-slate-500 mb-1 tracking-wide uppercase">
+    <span className="block text-[13px] font-medium text-slate-500 mb-1 tracking-wide uppercase">
       {children}
     </span>
   );
@@ -48,7 +48,7 @@ function Label({ children }) {
 function Input({ className = "", ...props }) {
   return (
     <input
-      className={`w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[13px] text-slate-900 outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 ${className}`}
+      className={`w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[14px] text-slate-900 outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 ${className}`}
       {...props}
     />
   );
@@ -57,7 +57,7 @@ function Input({ className = "", ...props }) {
 function Select({ children, className = "", ...props }) {
   return (
     <select
-      className={`w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[13px] text-slate-900 outline-none focus:border-slate-400 transition-colors ${className}`}
+      className={`w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[14px] text-slate-900 outline-none focus:border-slate-400 transition-colors ${className}`}
       {...props}
     >
       {children}
@@ -69,11 +69,11 @@ function CardHeader({ title, subtitle, step }) {
   return (
     <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
       <div>
-        <p className="text-[13px] font-medium text-slate-900">{title}</p>
-        {subtitle && <p className="text-[11px] text-slate-400 mt-0.5">{subtitle}</p>}
+        <p className="text-[14px] font-medium text-slate-900">{title}</p>
+        {subtitle && <p className="text-[13px] text-slate-400 mt-0.5">{subtitle}</p>}
       </div>
       {step && (
-        <span className="text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md">
+        <span className="text-[13px] font-medium text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md">
           Step {step}
         </span>
       )}
@@ -81,13 +81,14 @@ function CardHeader({ title, subtitle, step }) {
   );
 }
 
-const navItems = ["Dashboard", "Products", "Billing", "Purchases", "Service", "Reports", "Invoices"];
-const navLinks = ["/dashboard", "/products", "/billing", "/purchases", "/service", "/reports", "/invoices"];
+const navItems = [];
+const navLinks = [];
 
 export default function PurchasesClient() {
   const { pushToast } = useToast();
   const searchInputRef = useRef(null);
   const [dropdownRect, setDropdownRect] = useState(null);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
 
   const [products, setProducts] = useState([]);
   const [recentPurchases, setRecentPurchases] = useState([]);
@@ -132,10 +133,12 @@ export default function PurchasesClient() {
     if (query.trim() && searchInputRef.current) {
       const rect = searchInputRef.current.getBoundingClientRect();
       setDropdownRect({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
+        top: rect.bottom + 4,
+        left: rect.left,
         width: rect.width,
       });
+    } else {
+      setDropdownRect(null);
     }
   }, [query]);
 
@@ -145,8 +148,8 @@ export default function PurchasesClient() {
       if (query.trim() && searchInputRef.current) {
         const rect = searchInputRef.current.getBoundingClientRect();
         setDropdownRect({
-          top: rect.bottom + window.scrollY + 4,
-          left: rect.left + window.scrollX,
+          top: rect.bottom + 4,
+          left: rect.left,
           width: rect.width,
         });
       }
@@ -191,6 +194,20 @@ export default function PurchasesClient() {
     );
   }, [products, query]);
 
+  const visibleProducts = useMemo(() => filteredProducts.slice(0, 8), [filteredProducts]);
+
+  useEffect(() => {
+    if (!query.trim() || visibleProducts.length === 0) {
+      setActiveSuggestionIndex(-1);
+      return;
+    }
+
+    setActiveSuggestionIndex((current) => {
+      if (current < 0) return 0;
+      return Math.min(current, visibleProducts.length - 1);
+    });
+  }, [query, visibleProducts]);
+
   const lineItems = useMemo(() => items.map(calcItem), [items]);
 
   const totals = useMemo(() => {
@@ -212,6 +229,7 @@ export default function PurchasesClient() {
     setSelectedProduct(product);
     setQuery(product.name || "");
     setDropdownRect(null);
+    setActiveSuggestionIndex(-1);
     setDraft({
       quantity: "1",
       purchasePrice: product.costPrice ?? product.unitPrice ?? "0.00",
@@ -220,20 +238,20 @@ export default function PurchasesClient() {
     });
   }
 
-  function addItem() {
-    if (!selectedProduct) return setError("Choose a product first.");
-    const quantity = Number(draft.quantity || 0);
+  function addItem(product = selectedProduct, itemDraft = draft) {
+    if (!product) return setError("Choose a product first.");
+    const quantity = Number(itemDraft.quantity || 0);
     if (!Number.isInteger(quantity) || quantity <= 0) return setError("Quantity must be a positive whole number.");
     const item = {
       id: crypto.randomUUID(),
-      productId: selectedProduct.id,
-      name: selectedProduct.name,
-      sku: selectedProduct.sku || "",
-      itemCode: selectedProduct.itemCode || "",
+      productId: product.id,
+      name: product.name,
+      sku: product.sku || "",
+      itemCode: product.itemCode || "",
       quantity,
-      purchasePrice: draft.purchasePrice,
-      discountAmount: draft.discountAmount,
-      gstRate: draft.gstRate,
+      purchasePrice: itemDraft.purchasePrice,
+      discountAmount: itemDraft.discountAmount,
+      gstRate: itemDraft.gstRate,
     };
     setItems((cur) => {
       const idx = cur.findIndex((l) => l.productId === item.productId);
@@ -247,6 +265,7 @@ export default function PurchasesClient() {
     setSelectedProduct(null);
     setQuery("");
     setDropdownRect(null);
+    setActiveSuggestionIndex(-1);
     setDraft({ quantity: "1", purchasePrice: "", discountAmount: "", gstRate: "" });
     setError("");
   }
@@ -369,7 +388,7 @@ export default function PurchasesClient() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-[13px] text-slate-400">Loading purchases...</p>
+        <p className="text-[14px] text-slate-400">Loading purchases...</p>
       </div>
     );
   }
@@ -387,7 +406,7 @@ export default function PurchasesClient() {
             width: dropdownRect.width,
           }}
         >
-          {filteredProducts.slice(0, 8).map((p) => (
+          {visibleProducts.map((p, index) => (
             <button
               key={p.id}
               type="button"
@@ -395,35 +414,38 @@ export default function PurchasesClient() {
                 e.preventDefault();
                 chooseProduct(p);
               }}
-              className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
+              onMouseEnter={() => setActiveSuggestionIndex(index)}
+              className={`w-full flex items-center justify-between gap-4 px-4 py-3 text-left border-b border-slate-100 last:border-0 transition-colors ${
+                index === activeSuggestionIndex ? "bg-slate-100" : "hover:bg-slate-50"
+              }`}
             >
               <span>
-                <span className="block text-[13px] font-medium text-slate-900">{p.name}</span>
-                <span className="block text-[11px] text-slate-400">
+                <span className="block text-[14px] font-medium text-slate-900">{p.name}</span>
+                <span className="block text-[13px] text-slate-400">
                   {p.itemCode || p.sku || "—"}{p.brand?.name ? ` · ${p.brand.name}` : ""}
                 </span>
               </span>
-              <span className="text-[11px] text-slate-400 whitespace-nowrap">{p.stock ?? 0} in stock</span>
+              <span className="text-[13px] text-slate-400 whitespace-nowrap">{p.stock ?? 0} in stock</span>
             </button>
           ))}
         </div>
       )}
 
       {/* Top bar */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
+      <header className="bg-white border-b border-slate-200 z-20">
         <div className="max-w-screen-xl mx-auto px-6 h-[52px] flex items-center gap-6">
           <div className="flex items-center gap-2 shrink-0">
             <div className="w-2 h-2 rounded-full bg-blue-600" />
-            <span className="text-[14px] font-medium text-slate-900">OpsHub</span>
+            <span className="text-[15px] font-medium text-slate-900">OpsHub</span>
             <span className="text-slate-300 mx-1">/</span>
-            <span className="text-[13px] text-slate-500">Purchases</span>
+            <span className="text-[14px] text-slate-500">Purchases</span>
           </div>
           <nav className="flex items-center gap-0.5 flex-1">
             {navItems.map((item, i) => (
               <Link
                 key={item}
                 href={navLinks[i]}
-                className={`px-3 py-1.5 text-[12px] rounded-lg no-underline transition-colors ${
+                className={`px-3 py-1.5 text-[13px] rounded-lg no-underline transition-colors ${
                   item === "Purchases"
                     ? "bg-slate-100 text-slate-900 font-medium"
                     : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
@@ -436,24 +458,19 @@ export default function PurchasesClient() {
           <div className="flex items-center gap-2 shrink-0">
             <Link
               href="/purchases/history"
-              className="text-[12px] px-3 py-1.5 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors no-underline"
+              className="text-[13px] px-3 py-1.5 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors no-underline"
             >
-              History ↗
+              Purchase History ↗
             </Link>
-            <Link
-              href="/purchases"
-              className="text-[12px] px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors no-underline"
-            >
-              + New purchase
-            </Link>
+            
           </div>
         </div>
       </header>
 
       {/* Page header */}
       <div className="max-w-screen-xl mx-auto px-6 pt-6 pb-2">
-        <h1 className="text-[18px] font-medium text-slate-900">New purchase order</h1>
-        <p className="text-[12px] text-slate-400 mt-0.5">Receive stock from supplier — inventory updates instantly on save.</p>
+        <h1 className="text-[19px] font-medium text-slate-900">New purchase order</h1>
+        <p className="text-[13px] text-slate-400 mt-0.5">Receive stock from supplier — inventory updates instantly on save.</p>
       </div>
 
       {/* Main layout */}
@@ -497,7 +514,43 @@ export default function PurchasesClient() {
                   <Input
                     ref={searchInputRef}
                     value={query}
-                    onChange={(e) => { setQuery(e.target.value); setSelectedProduct(null); }}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setSelectedProduct(null);
+                      setActiveSuggestionIndex(-1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!visibleProducts.length) return;
+
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setActiveSuggestionIndex((current) => (current + 1) % visibleProducts.length);
+                        return;
+                      }
+
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setActiveSuggestionIndex((current) => {
+                          if (current <= 0) return visibleProducts.length - 1;
+                          return current - 1;
+                        });
+                        return;
+                      }
+
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const product = visibleProducts[activeSuggestionIndex >= 0 ? activeSuggestionIndex : 0];
+                        if (product) {
+                          const nextDraft = {
+                            quantity: draft.quantity || "1",
+                            purchasePrice: draft.purchasePrice || product.costPrice || product.unitPrice || "0.00",
+                            discountAmount: draft.discountAmount || "0.00",
+                            gstRate: draft.gstRate || product.gstRate || "0.00",
+                          };
+                          addItem(product, nextDraft);
+                        }
+                      }
+                    }}
                     onBlur={() => setTimeout(() => setDropdownRect(null), 150)}
                     placeholder="Search products..."
                     className="pl-8"
@@ -505,9 +558,9 @@ export default function PurchasesClient() {
                 </div>
                 <button
                   type="button"
-                  onClick={addItem}
+                  onClick={() => addItem()}
                   disabled={!selectedProduct}
-                  className="text-[12px] font-medium px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed whitespace-nowrap"
+                  className="text-[13px] font-medium px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed whitespace-nowrap"
                 >
                   + Add item
                 </button>
@@ -517,10 +570,10 @@ export default function PurchasesClient() {
                 <div className="mt-4 border border-slate-200 rounded-xl p-4 bg-slate-50">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <p className="text-[13px] font-medium text-slate-900">{selectedProduct.name}</p>
-                      <p className="text-[11px] text-slate-400">{selectedProduct.itemCode || selectedProduct.sku || "No code"}</p>
+                      <p className="text-[14px] font-medium text-slate-900">{selectedProduct.name}</p>
+                      <p className="text-[13px] text-slate-400">{selectedProduct.itemCode || selectedProduct.sku || "No code"}</p>
                     </div>
-                    <span className="text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">Selected</span>
+                    <span className="text-[12px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">Selected</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
@@ -550,7 +603,7 @@ export default function PurchasesClient() {
             {lineItems.length === 0 ? (
               <div className="p-5">
                 <div className="border border-dashed border-slate-200 rounded-xl py-10 text-center">
-                  <p className="text-[13px] text-slate-300">No items added yet</p>
+                  <p className="text-[14px] text-slate-300">No items added yet</p>
                 </div>
               </div>
             ) : (
@@ -560,7 +613,7 @@ export default function PurchasesClient() {
                   style={{ gridTemplateColumns: "2fr 64px 100px 90px 90px 100px 100px 32px" }}
                 >
                   {["Item", "Qty", "Cost price", "Discount", "Tax amt", "Unit cost", "Total", ""].map((h) => (
-                    <span key={h} className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">{h}</span>
+                    <span key={h} className="text-[12px] font-medium text-slate-400 uppercase tracking-wide">{h}</span>
                   ))}
                 </div>
                 {lineItems.map((item) => {
@@ -572,16 +625,16 @@ export default function PurchasesClient() {
                       style={{ gridTemplateColumns: "2fr 64px 100px 90px 90px 100px 100px 32px" }}
                     >
                       <div>
-                        <p className="text-[13px] font-medium text-slate-900 truncate max-w-[160px]">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">{item.itemCode || item.sku || "—"}</p>
+                        <p className="text-[14px] font-medium text-slate-900 truncate max-w-[160px]">{item.name}</p>
+                        <p className="text-[12px] text-slate-400">{item.itemCode || item.sku || "—"}</p>
                       </div>
-                      <input type="number" value={item.quantity} onChange={(e) => updateItem(item.productId, "quantity", e.target.value)} className="w-14 border border-slate-200 rounded-lg px-2 py-1.5 text-[12px] text-slate-900 outline-none focus:border-slate-400" />
-                      <input type="number" value={item.purchasePrice} onChange={(e) => updateItem(item.productId, "purchasePrice", e.target.value)} className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-[12px] text-slate-900 outline-none focus:border-slate-400" />
-                      <input type="number" value={item.discountAmount} onChange={(e) => updateItem(item.productId, "discountAmount", e.target.value)} className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-[12px] text-slate-900 outline-none focus:border-slate-400" />
-                      <span className="text-[12px] text-slate-500">{fmt(calc.taxAmount)}</span>
-                      <span className="text-[12px] text-slate-500">{fmt(calc.unitCost)}</span>
-                      <span className="text-[12px] font-medium text-slate-900">{fmt(calc.totalAmount)}</span>
-                      <button type="button" onClick={() => removeItem(item.productId)} className="text-slate-300 hover:text-red-500 transition-colors text-[13px]">✕</button>
+                      <input type="number" value={item.quantity} onChange={(e) => updateItem(item.productId, "quantity", e.target.value)} className="w-14 border border-slate-200 rounded-lg px-2 py-1.5 text-[13px] text-slate-900 outline-none focus:border-slate-400" />
+                      <input type="number" value={item.purchasePrice} onChange={(e) => updateItem(item.productId, "purchasePrice", e.target.value)} className="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-[13px] text-slate-900 outline-none focus:border-slate-400" />
+                      <input type="number" value={item.discountAmount} onChange={(e) => updateItem(item.productId, "discountAmount", e.target.value)} className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-[13px] text-slate-900 outline-none focus:border-slate-400" />
+                      <span className="text-[13px] text-slate-500">{fmt(calc.taxAmount)}</span>
+                      <span className="text-[13px] text-slate-500">{fmt(calc.unitCost)}</span>
+                      <span className="text-[13px] font-medium text-slate-900">{fmt(calc.totalAmount)}</span>
+                      <button type="button" onClick={() => removeItem(item.productId)} className="text-slate-300 hover:text-red-500 transition-colors text-[14px]">✕</button>
                     </div>
                   );
                 })}
@@ -593,7 +646,7 @@ export default function PurchasesClient() {
                     { label: "Due", value: fmt(activeDue), dark: true },
                   ].map(({ label, value, dark }) => (
                     <div key={label} className={`px-5 py-3 ${dark ? "bg-slate-900" : ""}`}>
-                      <p className={`text-[10px] font-medium uppercase tracking-wide mb-1 ${dark ? "text-slate-400" : "text-slate-400"}`}>{label}</p>
+                      <p className={`text-[13px] font-medium uppercase tracking-wide mb-1 ${dark ? "text-slate-400" : "text-slate-400"}`}>{label}</p>
                       <p className={`text-[14px] font-medium ${dark ? "text-white" : "text-slate-900"}`}>{value}</p>
                     </div>
                   ))}
@@ -625,11 +678,11 @@ export default function PurchasesClient() {
                   value={form.note}
                   onChange={(e) => setForm((c) => ({ ...c, note: e.target.value }))}
                   placeholder="Internal remark, delivery note, payment terms..."
-                  className="w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[13px] text-slate-900 outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 resize-none"
+                  className="w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[14px] text-slate-900 outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 resize-none"
                 />
               </div>
               {error && (
-                <div className="border border-red-100 bg-red-50 rounded-lg px-4 py-2.5 text-[12px] text-red-600">
+                <div className="border border-red-100 bg-red-50 rounded-lg px-4 py-2.5 text-[13px] text-red-600">
                   {error}
                 </div>
               )}
@@ -637,14 +690,14 @@ export default function PurchasesClient() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="text-[12px] font-medium px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  className="text-[13px] font-medium px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
                 >
                   {saving ? "Saving..." : "Save purchase →"}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setItems([]); setSelectedProduct(null); setQuery(""); setDropdownRect(null); setError(""); }}
-                  className="text-[12px] px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors"
+                  className="text-[13px] px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors"
                 >
                   Clear items
                 </button>
@@ -663,7 +716,7 @@ export default function PurchasesClient() {
               <>
                 <div className="px-5 py-3 border-b border-slate-100">
                   <p className="text-[14px] font-medium text-slate-900">{activePurchase.groupCode}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{activePurchase.supplierName} · {activePurchase.warehouse}</p>
+                  <p className="text-[13px] text-slate-400 mt-0.5">{activePurchase.supplierName} · {activePurchase.warehouse}</p>
                 </div>
                 <div className="grid grid-cols-2 divide-x divide-y divide-slate-100">
                   {[
@@ -673,8 +726,8 @@ export default function PurchasesClient() {
                     { label: "Items", value: activeItems.length, dark: false },
                   ].map(({ label, value, dark }) => (
                     <div key={label} className={`px-4 py-3 ${dark ? "bg-slate-900" : ""}`}>
-                      <p className={`text-[10px] font-medium tracking-wide uppercase mb-1 ${dark ? "text-slate-400" : "text-slate-400"}`}>{label}</p>
-                      <p className={`text-[13px] font-medium ${dark ? "text-white" : "text-slate-900"}`}>{value}</p>
+                      <p className={`text-[13px] font-medium tracking-wide uppercase mb-1 ${dark ? "text-slate-400" : "text-slate-400"}`}>{label}</p>
+                      <p className={`text-[14px] font-medium ${dark ? "text-white" : "text-slate-900"}`}>{value}</p>
                     </div>
                   ))}
                 </div>
@@ -682,7 +735,7 @@ export default function PurchasesClient() {
                   <button
                     type="button"
                     onClick={() => setShowPaymentForm((v) => !v)}
-                    className="w-full text-[12px] font-medium py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors"
+                    className="w-full text-[13px] font-medium py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors"
                   >
                     {showPaymentForm ? "Cancel" : "Add payment →"}
                   </button>
@@ -690,7 +743,7 @@ export default function PurchasesClient() {
 
                 {showPaymentForm && (
                   <form onSubmit={addPayment} className="px-4 pb-4 flex flex-col gap-3">
-                    <p className="text-[12px] font-medium text-slate-900">Payment entry</p>
+                    <p className="text-[13px] font-medium text-slate-900">Payment entry</p>
                     <div>
                       <Label>Amount (₹)</Label>
                       <Input type="number" value={payment.amount} onChange={(e) => setPayment((c) => ({ ...c, amount: e.target.value }))} placeholder="0.00" />
@@ -716,7 +769,7 @@ export default function PurchasesClient() {
                     <button
                       type="submit"
                       disabled={paying}
-                      className="w-full text-[12px] font-medium py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full text-[13px] font-medium py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
                     >
                       {paying ? "Saving..." : "Confirm payment →"}
                     </button>
@@ -725,15 +778,15 @@ export default function PurchasesClient() {
 
                 {activePayments.length > 0 && (
                   <div className="px-4 pb-4 border-t border-slate-100 pt-4">
-                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-2">Payment history</p>
+                    <p className="text-[13px] font-medium text-slate-400 uppercase tracking-wide mb-2">Payment history</p>
                     <div className="border border-slate-100 rounded-xl overflow-hidden">
                       {activePayments.map((p) => (
                         <div key={p.id} className="flex items-center justify-between px-3 py-2.5 border-b border-slate-100 last:border-0">
                           <div>
-                            <p className="text-[12px] font-medium text-slate-900">{p.paymentType}</p>
-                            <p className="text-[10px] text-slate-400">{isoDate(p.createdAt)} · {p.account || "—"}</p>
+                            <p className="text-[13px] font-medium text-slate-900">{p.paymentType}</p>
+                            <p className="text-[13px] text-slate-400">{isoDate(p.createdAt)} · {p.account || "—"}</p>
                           </div>
-                          <p className="text-[12px] font-medium text-slate-900">{fmt(p.amount)}</p>
+                          <p className="text-[13px] font-medium text-slate-900">{fmt(p.amount)}</p>
                         </div>
                       ))}
                     </div>
@@ -743,7 +796,7 @@ export default function PurchasesClient() {
             ) : (
               <div className="p-5">
                 <div className="border border-dashed border-slate-200 rounded-xl py-8 text-center">
-                  <p className="text-[12px] text-slate-300">Save a purchase or select one below</p>
+                  <p className="text-[13px] text-slate-300">Save a purchase or select one below</p>
                 </div>
               </div>
             )}
@@ -752,12 +805,12 @@ export default function PurchasesClient() {
           {/* Recent purchases */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-              <p className="text-[13px] font-medium text-slate-900">Recent purchases</p>
-              {loadingPurchase && <span className="text-[11px] text-slate-400">Loading...</span>}
+              <p className="text-[14px] font-medium text-slate-900">Recent purchases</p>
+              {loadingPurchase && <span className="text-[13px] text-slate-400">Loading...</span>}
             </div>
             {recentPurchases.length === 0 ? (
               <div className="p-5 text-center">
-                <p className="text-[12px] text-slate-300">No purchases yet</p>
+                <p className="text-[13px] text-slate-300">No purchases yet</p>
               </div>
             ) : (
               <>
@@ -771,11 +824,11 @@ export default function PurchasesClient() {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className={`text-[12px] font-medium ${activePurchase?.id === p.id ? "text-white" : "text-slate-900"}`}>{p.groupCode}</span>
-                      <span className={`text-[12px] font-medium ${activePurchase?.id === p.id ? "text-white" : "text-slate-900"}`}>{fmt(p.grandTotal)}</span>
+                      <span className={`text-[13px] font-medium ${activePurchase?.id === p.id ? "text-white" : "text-slate-900"}`}>{p.groupCode}</span>
+                      <span className={`text-[13px] font-medium ${activePurchase?.id === p.id ? "text-white" : "text-slate-900"}`}>{fmt(p.grandTotal)}</span>
                     </div>
-                    <p className={`text-[11px] mb-1.5 ${activePurchase?.id === p.id ? "text-slate-400" : "text-slate-400"}`}>{p.supplierName} · {isoDate(p.purchaseDate)}</p>
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                    <p className={`text-[13px] mb-1.5 ${activePurchase?.id === p.id ? "text-slate-400" : "text-slate-400"}`}>{p.supplierName} · {isoDate(p.purchaseDate)}</p>
+                      <span className={`text-[13px] font-medium px-2 py-0.5 rounded-full border ${
                       activePurchase?.id === p.id
                         ? "bg-white/10 text-white/70 border-white/20"
                         : p.status === "paid"
@@ -789,7 +842,7 @@ export default function PurchasesClient() {
                 <div className="p-3">
                   <Link
                     href="/purchases/history"
-                    className="block w-full text-center text-[12px] text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg py-2 hover:bg-slate-50 transition-colors no-underline"
+                    className="block w-full text-center text-[13px] text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg py-2 hover:bg-slate-50 transition-colors no-underline"
                   >
                     View full history ↗
                   </Link>

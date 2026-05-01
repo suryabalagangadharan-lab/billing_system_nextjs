@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/toast-provider";
+import FloatingNavbar from "@/components/floating-navbar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +25,9 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_transparent_40%),linear-gradient(180deg,_#f8fafc_0%,_#eef6ff_100%)] text-slate-950">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <FloatingNavbar>{children}</FloatingNavbar>
+        </ToastProvider>
       </body>
     </html>
   );

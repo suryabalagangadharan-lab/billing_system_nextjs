@@ -62,7 +62,6 @@ function describeWhen(value) {
 
 export default function HomeClient({ initialLive = null }) {
   const [activeKey, setActiveKey] = useState("p");
-  const [activeNav, setActiveNav] = useState("Products");
   const [time, setTime] = useState("");
   const [cmdFocused, setCmdFocused] = useState(false);
   const [live, setLive] = useState(() =>
@@ -105,7 +104,6 @@ export default function HomeClient({ initialLive = null }) {
       const section = sections.find((item) => item.key === e.key.toLowerCase());
       if (section) {
         setActiveKey(section.key);
-        setActiveNav(section.title);
       }
     };
 
@@ -293,54 +291,34 @@ export default function HomeClient({ initialLive = null }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-50 border-b border-slate-200/90 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-6">
-          <div className="flex shrink-0 items-center gap-2.5">
-            <div className="h-2 w-2 rounded-full bg-blue-600" />
-            <span className="text-base font-semibold tracking-tight text-slate-950">OpsHub</span>
-            <div className="h-4 w-px bg-slate-200" />
-            <span className="text-sm text-slate-500">Billing & Operations</span>
-          </div>
-
-          <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
-            {sections.map((section) => (
-              <Link
-                key={section.key}
-                href={section.href}
-                onClick={() => {
-                  setActiveKey(section.key);
-                  setActiveNav(section.title);
-                }}
-                className={`whitespace-nowrap rounded-md px-4 py-2 text-sm no-underline transition-colors ${
-                  activeNav === section.title
-                    ? "bg-slate-100 font-semibold text-slate-950"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                {section.title}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-xs text-slate-500">
-              {time}
-            </span>
-            <div className="flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700">
-              <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-              Online
-            </div>
-            <button
-              onClick={handleLogout}
-              className="rounded-md border border-slate-200 bg-white px-3.5 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-50"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-7xl space-y-7 px-6 py-8">
+        <section className="rounded-[2rem] border border-slate-200 bg-white px-6 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-2 w-2 rounded-full bg-blue-600" />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Billing & Operations</p>
+                <h1 className="text-xl font-semibold tracking-tight text-slate-950">Home</h1>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-xs text-slate-500">
+                {time}
+              </span>
+              <div className="flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700">
+                <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                Online
+              </div>
+              <button
+                onClick={handleLogout}
+                className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section>
           <div className="mb-3 flex items-end justify-between">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -370,7 +348,6 @@ export default function HomeClient({ initialLive = null }) {
                 href={section.href}
                 onClick={() => {
                   setActiveKey(section.key);
-                  setActiveNav(section.title);
                 }}
                 className={`group flex items-start gap-3.5 rounded-xl border bg-white p-5 no-underline transition-colors ${
                   activeKey === section.key

@@ -26,36 +26,83 @@ const initialForm = {
   description: "",
 };
 
-function Stat({ label, value, sub }) {
+// ── Primitives ───────────────────────────────────────────────────────────────
+
+function Label({ children }) {
   return (
-    <div className="border border-slate-200 rounded-sm px-5 py-4 bg-white">
-      <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-1">
-        {label}
-      </p>
-      <p className="text-2xl font-semibold text-slate-900 tracking-tight">
-        {value}
-      </p>
-      {sub && <p className="text-xs font-mono text-slate-400 mt-0.5">{sub}</p>}
-    </div>
+    <span className="block text-[13px] font-medium text-slate-500 mb-1 tracking-wide uppercase">
+      {children}
+    </span>
+  );
+}
+
+function Input({ className = "", ...props }) {
+  return (
+    <input
+      className={`w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[14px] text-slate-900 outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 ${className}`}
+      {...props}
+    />
+  );
+}
+
+function Select({ children, className = "", ...props }) {
+  return (
+    <select
+      className={`w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[14px] text-slate-900 outline-none focus:border-slate-400 transition-colors ${className}`}
+      {...props}
+    >
+      {children}
+    </select>
   );
 }
 
 function Field({ label, value, onChange, placeholder, type = "text" }) {
   return (
     <label className="block">
-      <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-slate-500">
-        {label}
-      </span>
-      <input
+      <Label>{label}</Label>
+      <Input
         type={type}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="mt-1.5 w-full border border-slate-200 rounded-sm px-3 py-2.5 text-sm font-mono text-slate-900 outline-none focus:border-slate-900 bg-white placeholder:text-slate-300 transition-colors"
       />
     </label>
   );
 }
+
+function CardHeader({ title, subtitle, action }) {
+  return (
+    <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+      <div>
+        <p className="text-[14px] font-medium text-slate-900">{title}</p>
+        {subtitle && <p className="text-[13px] text-slate-400 mt-0.5">{subtitle}</p>}
+      </div>
+      {action && action}
+    </div>
+  );
+}
+
+function StockBadge({ stock, alertQty }) {
+  if (stock === 0)
+    return (
+      <span className="text-[12px] font-medium px-2 py-0.5 rounded-full border bg-red-50 text-red-600 border-red-200">
+        Out
+      </span>
+    );
+  if (stock <= alertQty)
+    return (
+      <span className="text-[12px] font-medium px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+        Low
+      </span>
+    );
+  return (
+    <span className="text-[12px] font-medium px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+      OK
+    </span>
+  );
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProductsClient() {
   const { pushToast } = useToast();
@@ -63,6 +110,7 @@ export default function ProductsClient() {
   const [form, setForm] = useState(initialForm);
   const [search, setSearch] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -77,7 +125,8 @@ export default function ProductsClient() {
   const [gstCategory, setGstCategory] = useState("");
   const [gstValue, setGstValue] = useState("");
   const [updatingGst, setUpdatingGst] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [showGstPanel, setShowGstPanel] = useState(false);
+  const [activeTab, setActiveTab] = useState("details"); // "details" | "import"
 
   const loadProducts = useCallback(async () => {
     try {
@@ -89,57 +138,33 @@ export default function ProductsClient() {
       setError("");
     } catch (e) {
       setError(e.message);
-      pushToast({
-        title: "Products unavailable",
-        description: e.message,
-        tone: "error",
-      });
+      pushToast({ title: "Products unavailable", description: e.message, tone: "error" });
     } finally {
       setLoading(false);
     }
   }, [pushToast]);
 
+  useEffect(() => { loadProducts(); }, [loadProducts]);
+  useEffect(() => { setPage(1); }, [search, stockFilter, categoryFilter]);
   useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, stockFilter]);
-
-  // Lock body scroll when drawer is open
-  useEffect(() => {
-    if (showForm) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    document.body.style.overflow = showForm ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
   }, [showForm]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
     try {
-      const payloadBody = {
-        ...form,
-        stock: Number(form.stock || 0),
-        alertQty: Number(form.alertQty || 0),
-      };
-
       const res = await fetch(
         editingId ? `/api/products/${editingId}` : "/api/products",
         {
           method: editingId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadBody),
-        },
+          body: JSON.stringify({ ...form, stock: Number(form.stock || 0), alertQty: Number(form.alertQty || 0) }),
+        }
       );
       const payload = await res.json();
-      if (!res.ok)
-        throw new Error(payload.error || "Unable to create product.");
+      if (!res.ok) throw new Error(payload.error || "Unable to save product.");
       setForm(initialForm);
       setEditingId(null);
       setShowForm(false);
@@ -151,39 +176,22 @@ export default function ProductsClient() {
       await loadProducts();
     } catch (e) {
       setError(e.message);
-      pushToast({
-        title: editingId
-          ? "Could not update product"
-          : "Could not create product",
-        description: e.message,
-        tone: "error",
-      });
+      pushToast({ title: "Could not save product", description: e.message, tone: "error" });
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm("Delete this product? This cannot be undone.")) return;
-
+  async function handleDelete(id, name) {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
     try {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
       const payload = await res.json();
-      if (!res.ok)
-        throw new Error(payload.error || "Unable to delete product.");
-
-      pushToast({
-        title: "Product deleted",
-        description: `${payload.deletedId}`,
-        tone: "success",
-      });
+      if (!res.ok) throw new Error(payload.error || "Unable to delete product.");
+      pushToast({ title: "Product deleted", description: name, tone: "success" });
       await loadProducts();
     } catch (e) {
-      pushToast({
-        title: "Delete failed",
-        description: e.message,
-        tone: "error",
-      });
+      pushToast({ title: "Delete failed", description: e.message, tone: "error" });
     }
   }
 
@@ -203,25 +211,20 @@ export default function ProductsClient() {
       description: p.description || "",
     });
     setEditingId(p.id);
+    setActiveTab("details");
     setShowForm(true);
   }
 
   async function handleImport(e) {
     e.preventDefault();
-    if (!importFile) {
-      setError("Choose an Excel file first.");
-      return;
-    }
+    if (!importFile) return setError("Choose an Excel file first.");
     setImporting(true);
     setImportSummary(null);
     setImportErrors([]);
     try {
       const fd = new FormData();
       fd.append("file", importFile);
-      const res = await fetch("/api/products/import", {
-        method: "POST",
-        body: fd,
-      });
+      const res = await fetch("/api/products/import", { method: "POST", body: fd });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.error || "Import failed.");
       setImportSummary(payload.summary || null);
@@ -234,671 +237,542 @@ export default function ProductsClient() {
       await loadProducts();
     } catch (e) {
       setError(e.message);
-      pushToast({
-        title: "Import failed",
-        description: e.message,
-        tone: "error",
-      });
+      pushToast({ title: "Import failed", description: e.message, tone: "error" });
     } finally {
       setImporting(false);
     }
   }
 
+  async function handleUpdateGst() {
+    if (!gstCategory || !gstValue) return pushToast({ title: "Select category and GST value", tone: "error" });
+    if (!confirm(`Update GST to ${gstValue}% for all products in "${gstCategory}"?`)) return;
+    try {
+      setUpdatingGst(true);
+      const res = await fetch("/api/products/update-gst-by-category", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: gstCategory, gstRate: gstValue }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      pushToast({ title: "GST updated", description: `${data.updatedCount} products updated.`, tone: "success" });
+      setGstCategory("");
+      setGstValue("");
+      setShowGstPanel(false);
+      await loadProducts();
+    } catch (err) {
+      pushToast({ title: "GST update failed", description: err.message, tone: "error" });
+    } finally {
+      setUpdatingGst(false);
+    }
+  }
+
   const totalStock = products.reduce((s, p) => s + Number(p.stock || 0), 0);
-  const lowStockCount = products.filter((p) => p.stock <= 5).length;
+  const lowStockCount = products.filter((p) => p.stock <= p.alertQty && p.stock > 0).length;
+  const outStockCount = products.filter((p) => p.stock === 0).length;
+
+  const categories = useMemo(() => {
+    const set = new Set();
+    products.forEach((p) => { if (p.category) set.add(p.category); });
+    return Array.from(set).sort();
+  }, [products]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-
     return products.filter((p) => {
-      const matchSearch =
-        !q ||
-        [p.name, p.sku, p.brand?.name, p.category]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-
-      const matchStock =
-        stockFilter === "all"
-          ? true
-          : stockFilter === "low"
-            ? p.stock <= 5
-            : p.stock === 0;
-
-      const matchCategory =
-        categoryFilter === "all" ? true : p.category === categoryFilter;
-
+      const matchSearch = !q || [p.name, p.sku, p.brand?.name, p.category, p.itemCode].filter(Boolean).join(" ").toLowerCase().includes(q);
+      const matchStock = stockFilter === "all" ? true : stockFilter === "low" ? (p.stock <= p.alertQty && p.stock > 0) : p.stock === 0;
+      const matchCategory = categoryFilter === "all" ? true : p.category === categoryFilter;
       return matchSearch && matchStock && matchCategory;
     });
   }, [products, search, stockFilter, categoryFilter]);
 
-  const totalPages = Math.ceil(visible.length / pageSize);
-
+  const totalPages = Math.ceil(visible.length / pageSize) || 1;
   const paginated = useMemo(() => {
     const start = (page - 1) * pageSize;
     return visible.slice(start, start + pageSize);
   }, [visible, page, pageSize]);
 
-  const formFields = [
-    ["itemCode", "Item Code"],
-    ["name", "Product Name"],
-    ["sku", "SKU"],
-    ["brandName", "Brand"],
-    ["category", "Category"],
-    ["unit", "Unit (PCS, KIT)"],
-    ["alertQty", "Alert Qty"],
-    ["unitPrice", "Unit Price"],
-    ["gstRate", "GST Rate (%)"],
-    ["costPrice", "Cost Price"],
-    ["stock", "Opening Stock"],
-  ];
-
-  const COL_HEADERS = [
-    "Code",
-    "Name / SKU",
-    "Brand",
-    "Category",
-    "Unit",
-    "Stock",
-    "Alert",
-    "Price",
-    "Tax",
-    "Actions",
-  ];
-
-  const COL_WIDTHS = [
-    "10%",
-    "24%",
-    "9%",
-    "9%",
-    "6%",
-    "6%",
-    "5%",
-    "12%",
-    "9%",
-    "10%",
-  ];
-
-  const categories = useMemo(() => {
-    const set = new Set();
-    products.forEach((p) => {
-      if (p.category) set.add(p.category);
-    });
-    return Array.from(set).sort();
-  }, [products]);
+  const hasFilters = search || stockFilter !== "all" || categoryFilter !== "all";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8">
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between border-b border-slate-200 pb-5 mb-8">
-        <div>
-          <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-slate-400 mb-1">
-            Inventory Desk
-          </p>
-          <h1 className="text-xl font-semibold text-slate-900">Products</h1>
-        </div>
-        <div className="border border-slate-200 rounded-sm p-4 mb-4 bg-white">
-          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold mb-3">
-            Update GST by Category
-          </p>
+    <div className="min-h-screen bg-slate-50">
 
-          <div className="flex gap-3 items-end flex-wrap">
-            {/* Category Dropdown */}
-            <div>
-              <label className="text-[10px] font-mono text-slate-500 uppercase">
-                Category
-              </label>
-              <select
-                value={gstCategory}
-                onChange={(e) => setGstCategory(e.target.value)}
-                className="block mt-1 border border-slate-200 px-3 py-2 text-xs font-mono bg-white"
-              >
-                <option value="">Select category</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* GST Input */}
-            <div>
-              <label className="text-[10px] font-mono text-slate-500 uppercase">
-                GST %
-              </label>
-              <input
-                type="number"
-                value={gstValue}
-                onChange={(e) => setGstValue(e.target.value)}
-                placeholder="18"
-                className="block mt-1 border border-slate-200 px-3 py-2 text-xs font-mono"
-              />
-            </div>
-
-            {/* Button */}
+      {/* ── Top bar ── */}
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-screen-xl mx-auto px-6 h-[52px] flex items-center gap-6">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-2 h-2 rounded-full bg-blue-600" />
+            <span className="text-[15px] font-medium text-slate-900">OpsHub</span>
+            <span className="text-slate-300 mx-1">/</span>
+            <span className="text-[14px] font-medium text-slate-900">Products</span>
+          </div>
+          <div className="flex-1" />
+          <div className="flex items-center gap-2">
             <button
-              onClick={async () => {
-                if (!gstCategory || !gstValue) {
-                  alert("Select category and GST");
-                  return;
-                }
-
-                if (
-                  !confirm(`Update GST to ${gstValue}% for "${gstCategory}"?`)
-                )
-                  return;
-
-                try {
-                  setUpdatingGst(true);
-
-                  const res = await fetch(
-                    "/api/products/update-gst-by-category",
-                    {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        category: gstCategory,
-                        gstRate: gstValue,
-                      }),
-                    },
-                  );
-
-                  const data = await res.json();
-
-                  if (!res.ok) throw new Error(data.error);
-
-                  alert(`${data.updatedCount} products updated`);
-
-                  setGstCategory("");
-                  setGstValue("");
-
-                  await loadProducts(); // refresh table
-                } catch (err) {
-                  alert(err.message);
-                } finally {
-                  setUpdatingGst(false);
-                }
-              }}
-              disabled={updatingGst}
-              className="border border-slate-900 text-slate-900 px-4 py-2 text-xs font-mono hover:bg-slate-900 hover:text-white"
+              onClick={() => setShowGstPanel((v) => !v)}
+              className="text-[13px] px-3 py-1.5 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors"
             >
-              {updatingGst ? "Updating..." : "Update GST"}
+              Update GST ↓
+            </button>
+            <button
+              onClick={() => { setError(""); setEditingId(null); setForm(initialForm); setActiveTab("details"); setShowForm(true); }}
+              className="text-[13px] font-medium px-4 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors"
+            >
+              + Add product
             </button>
           </div>
         </div>
-        <button
-          onClick={() => {
-            setError("");
-            setShowForm(true);
-          }}
-          className="bg-slate-900 text-white text-xs font-mono px-5 py-2.5 rounded-sm hover:bg-slate-700 transition-colors"
-        >
-          + Add Product
-        </button>
-      </div>
+      </header>
 
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <Stat
-          label="Catalog Items"
-          value={loading ? "—" : products.length}
-          sub="Sellable items"
-        />
-        <Stat
-          label="Units on Hand"
-          value={loading ? "—" : totalStock}
-          sub="Combined stock"
-        />
-        <Stat
-          label="Low Stock"
-          value={loading ? "—" : lowStockCount}
-          sub="Need attention"
-        />
-      </div>
-
-      {lowStockCount > 0 && (
-        <div className="border border-amber-200 bg-amber-50 rounded-sm px-4 py-2.5 mb-6 text-xs font-mono text-amber-700">
-          ⚠ {lowStockCount} product{lowStockCount !== 1 ? "s" : ""} need
-          replenishment.
+      {/* ── GST Slide-down panel ── */}
+      {showGstPanel && (
+        <div className="bg-white border-b border-slate-200">
+          <div className="max-w-screen-xl mx-auto px-6 py-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+              <div className="flex items-end gap-4 flex-wrap">
+                <div className="flex-1 min-w-[160px]">
+                  <Label>Category</Label>
+                  <Select value={gstCategory} onChange={(e) => setGstCategory(e.target.value)}>
+                    <option value="">Select category…</option>
+                    {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </Select>
+                </div>
+                <div className="w-32">
+                  <Label>GST Rate (%)</Label>
+                  <Input type="number" value={gstValue} onChange={(e) => setGstValue(e.target.value)} placeholder="18" />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleUpdateGst}
+                    disabled={updatingGst || !gstCategory || !gstValue}
+                    className="text-[13px] font-medium px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  >
+                    {updatingGst ? "Updating…" : "Apply →"}
+                  </button>
+                  <button
+                    onClick={() => setShowGstPanel(false)}
+                    className="text-[13px] px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              {gstCategory && (
+                <p className="text-[13px] text-slate-400 mt-3">
+                  This will update GST to <span className="font-medium text-slate-700">{gstValue || "?"}%</span> for all products in <span className="font-medium text-slate-700">"{gstCategory}"</span>.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── Product Table ── */}
-      <div className="border border-slate-200 rounded-sm bg-white p-5">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold">
-            Product List
-          </p>
-          
-          <div className="flex gap-2 flex-wrap items-center">
-            <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-slate-900 bg-white"
-          >
-            <option value="all">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, SKU, brand…"
-              className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-900 outline-none focus:border-slate-900 bg-white placeholder:text-slate-300 transition-colors"
-            />
-            <select
-              value={stockFilter}
-              onChange={(e) => setStockFilter(e.target.value)}
-              className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-slate-900 bg-white"
+      <div className="max-w-screen-xl mx-auto px-6 pt-6 pb-2">
+        <h1 className="text-[19px] font-medium text-slate-900">Product catalogue</h1>
+        <p className="text-[13px] text-slate-400 mt-0.5">Manage inventory items, pricing, and stock levels.</p>
+      </div>
+
+      {/* ── Stats ── */}
+      <div className="max-w-screen-xl mx-auto px-6 pt-4 pb-2">
+        <div className="grid grid-cols-4 bg-white border border-slate-200 rounded-xl overflow-hidden divide-x divide-slate-100">
+          {[
+            { label: "Catalog Items", value: loading ? "—" : products.length, sub: "Total products" },
+            { label: "Units on Hand", value: loading ? "—" : totalStock.toLocaleString("en-IN"), sub: "Combined stock" },
+            { label: "Low Stock", value: loading ? "—" : lowStockCount, sub: "Need replenishment", warn: lowStockCount > 0 },
+            { label: "Out of Stock", value: loading ? "—" : outStockCount, sub: "Zero quantity", dark: outStockCount > 0 },
+          ].map(({ label, value, sub, dark, warn }) => (
+            <div key={label} className={`px-5 py-4 ${dark ? "bg-slate-900" : warn ? "bg-amber-50" : ""}`}>
+              <p className={`text-[13px] font-medium tracking-wide uppercase mb-1 ${dark ? "text-slate-400" : warn ? "text-amber-600" : "text-slate-400"}`}>{label}</p>
+              <p className={`text-[20px] font-medium ${dark ? "text-white" : warn ? "text-amber-700" : "text-slate-900"}`}>{value}</p>
+              <p className={`text-[12px] mt-0.5 ${dark ? "text-slate-500" : warn ? "text-amber-500" : "text-slate-400"}`}>{sub}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Low stock alert ── */}
+      {lowStockCount > 0 && (
+        <div className="max-w-screen-xl mx-auto px-6 pt-3">
+          <div className="border border-amber-200 bg-amber-50 rounded-xl px-4 py-3 text-[13px] text-amber-700 flex items-center gap-2">
+            <span>⚠</span>
+            <span><span className="font-medium">{lowStockCount} product{lowStockCount !== 1 ? "s" : ""}</span> are running low and need replenishment.</span>
+            <button
+              onClick={() => setStockFilter("low")}
+              className="ml-auto text-[13px] font-medium text-amber-700 underline underline-offset-2"
             >
-              <option value="all">All stock</option>
-              <option value="low">Low stock</option>
-              <option value="out">Out of stock</option>
-            </select>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(1);
-              }}
-              className="border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-slate-900 bg-white"
-            >
-              <option value={10}>10 / page</option>
-              <option value={100}>100 / page</option>
-              <option value={500}>500 / page</option>
-            </select>
+              View low stock →
+            </button>
           </div>
         </div>
+      )}
 
-        {/* Table */}
-        <div className="w-full overflow-hidden border border-slate-100 rounded-sm">
-          <table
-            className="w-full border-collapse table-fixed"
-            style={{ tableLayout: "fixed" }}
-          >
-            <colgroup>
-              {COL_WIDTHS.map((w, i) => (
-                <col key={i} style={{ width: w }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr className="bg-slate-50">
-                {COL_HEADERS.map((h) => (
-                  <th
-                    key={h}
-                    className="text-left px-2 py-2.5 text-[10px] font-mono uppercase tracking-[0.15em] text-slate-400 font-normal whitespace-nowrap overflow-hidden"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={10} className="p-4">
-                    <div className="space-y-3">
-                      {[1, 2, 3].map((i) => (
-                        <div
-                          key={i}
-                          className="h-10 bg-slate-100 rounded-sm animate-pulse"
-                        />
-                      ))}
-                    </div>
-                  </td>
+      {/* ── Main table card ── */}
+      <div className="max-w-screen-xl mx-auto px-6 pb-8 pt-4">
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+
+          {/* Toolbar */}
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 select-none pointer-events-none text-[14px]">⌕</span>
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name, SKU, brand, code…"
+                className="pl-8"
+              />
+            </div>
+            <div className="w-44">
+              <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                <option value="all">All categories</option>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </div>
+            <div className="w-36">
+              <Select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
+                <option value="all">All stock</option>
+                <option value="low">Low stock</option>
+                <option value="out">Out of stock</option>
+              </Select>
+            </div>
+            <div className="w-32">
+              <Select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
+                <option value={5}>5 / page</option>
+                <option value={10}>10 / page</option>
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+                <option value={500}>500 / page</option>
+              </Select>
+            </div>
+            {hasFilters && (
+              <button
+                onClick={() => { setSearch(""); setStockFilter("all"); setCategoryFilter("all"); }}
+                className="text-[13px] text-slate-400 hover:text-slate-700 transition-colors whitespace-nowrap"
+              >
+                Clear ✕
+              </button>
+            )}
+            <span className="text-[13px] text-slate-400 ml-auto whitespace-nowrap">
+              {visible.length} result{visible.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse" style={{ tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "22%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "6%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "6%" }} />
+                <col style={{ width: "11%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "9%" }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  {["Code", "Name / SKU", "Brand", "Category", "Unit", "Stock", "Status", "Price", "Tax", "Actions"].map((h) => (
+                    <th key={h} className="text-left px-4 py-3 text-[12px] font-medium text-slate-400 uppercase tracking-wide whitespace-nowrap overflow-hidden">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ) : paginated.length ? (
-                paginated.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="border-t border-slate-100 hover:bg-slate-50 transition-colors"
-                  >
-                    {/* Code */}
-                    <td className="px-2 py-3 text-xs font-mono text-slate-600 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {p.itemCode || "—"}
-                    </td>
-
-                    {/* Name / SKU */}
-                    <td className="px-2 py-3 overflow-hidden">
-                      <div className="space-y-[2px] min-w-0">
-                        <p className="truncate text-sm font-semibold text-blue-600 leading-tight cursor-pointer hover:underline">
-                          {p.name}
-                        </p>
-
-                        <p className="text-[11px] font-mono text-slate-700">
-                          HSN:{p.itemCode || "—"}
-                        </p>
-
-                        <p className="text-[11px] font-mono text-slate-700">
-                          SKU:
-                        </p>
-                      </div>
-                    </td>
-
-                    {/* Brand */}
-                    <td className="px-2 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {p.brand?.name || "—"}
-                    </td>
-
-                    {/* Category */}
-                    <td className="px-2 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {p.category || "—"}
-                    </td>
-
-                    {/* Unit */}
-                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
-                      {p.unit || "—"}
-                    </td>
-
-                    {/* Stock */}
-                    <td
-                      className={`px-2 py-3 text-sm font-mono font-semibold whitespace-nowrap ${
-                        p.stock <= p.alertQty
-                          ? "text-red-600"
-                          : "text-slate-700"
-                      }`}
-                    >
-                      {p.stock}
-                    </td>
-
-                    {/* Alert */}
-                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
-                      {p.alertQty}
-                    </td>
-
-                    {/* Price */}
-                    <td className="px-2 py-3 text-sm font-mono font-medium text-slate-900 overflow-hidden text-ellipsis whitespace-nowrap">
-                      {fmt(p.unitPrice)}
-                    </td>
-
-                    {/* Tax */}
-                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
-                      GST {p.gstRate}%
-                    </td>
-                    {/* Actions */}
-                    <td className="px-2 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">
-                      <div className="flex flex-col gap-1 min-w-[72px]">
+              </thead>
+              <tbody>
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="border-b border-slate-100">
+                      {Array.from({ length: 10 }).map((_, j) => (
+                        <td key={j} className="px-4 py-3">
+                          <div className="h-4 bg-slate-100 rounded-lg animate-pulse" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : paginated.length ? (
+                  paginated.map((p) => (
+                    <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors group">
+                      <td className="px-4 py-3 text-[13px] text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap font-mono">
+                        {p.itemCode || "—"}
+                      </td>
+                      <td className="px-4 py-3 overflow-hidden">
+                        <p className="text-[14px] font-medium text-slate-900 truncate">{p.name}</p>
+                        <p className="text-[12px] text-slate-400 font-mono">{p.sku || "No SKU"}</p>
+                      </td>
+                      <td className="px-4 py-3 text-[13px] text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {p.brand?.name || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-[13px] text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {p.category || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-[13px] text-slate-500 whitespace-nowrap">
+                        {p.unit || "—"}
+                      </td>
+                      <td className={`px-4 py-3 text-[14px] font-medium whitespace-nowrap ${p.stock === 0 ? "text-red-500" : p.stock <= p.alertQty ? "text-amber-600" : "text-slate-900"}`}>
+                        {p.stock}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <StockBadge stock={p.stock} alertQty={p.alertQty} />
+                      </td>
+                      <td className="px-4 py-3 text-[14px] font-medium text-slate-900 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {fmt(p.unitPrice)}
+                      </td>
+                      <td className="px-4 py-3 text-[13px] text-slate-500 whitespace-nowrap">
+                        {p.gstRate}%
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleEdit(p)}
+                            className="text-[13px] font-medium px-2.5 py-1 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(p.id, p.name)}
+                            className="text-[13px] px-2.5 py-1 border border-red-100 rounded-lg text-red-500 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all"
+                          >
+                            Del
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-12 text-center">
+                      <p className="text-[14px] text-slate-300 mb-3">No products match current filters.</p>
+                      {hasFilters && (
                         <button
-                          onClick={() => handleEdit(p)}
-                          className="w-full px-2 py-1 text-[11px] border border-slate-200 rounded-sm hover:bg-slate-50"
+                          onClick={() => { setSearch(""); setStockFilter("all"); setCategoryFilter("all"); }}
+                          className="text-[13px] px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors"
                         >
-                          Edit
+                          Clear filters
                         </button>
-                        <button
-                          onClick={() => handleDelete(p.id)}
-                          className="w-full px-2 py-1 text-[11px] border border-rose-200 text-rose-600 rounded-sm hover:bg-rose-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      )}
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={10}
-                    className="px-4 py-8 text-xs font-mono text-slate-400 text-center"
-                  >
-                    No products match current filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between mt-4 text-xs font-mono text-slate-600">
-          <span>
-            Page {page} of {totalPages || 1}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={page === 1}
-              className="px-3 py-1 border border-slate-200 rounded-sm disabled:opacity-40 hover:bg-slate-50 transition-colors"
-            >
-              Prev
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-              disabled={page >= totalPages}
-              className="px-3 py-1 border border-slate-200 rounded-sm disabled:opacity-40 hover:bg-slate-50 transition-colors"
-            >
-              Next
-            </button>
+          {/* Pagination */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-100">
+            <span className="text-[13px] text-slate-400">
+              Page {page} of {totalPages} · {visible.length} result{visible.length !== 1 ? "s" : ""}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                disabled={page === 1}
+                className="text-[13px] px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors"
+              >
+                ← Prev
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                disabled={page >= totalPages}
+                className="text-[13px] px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors"
+              >
+                Next →
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── Add Product Drawer ── */}
+      {/* ── Add / Edit Drawer ── */}
       {showForm && (
-        <div
-          className="fixed inset-0 z-50 flex justify-end"
-          style={{ background: "rgba(0,0,0,0.30)" }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowForm(false);
-          }}
-        >
-          <div className="w-[440px] max-w-full h-full overflow-y-auto bg-white flex flex-col">
-            {/* Drawer Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 sticky top-0 bg-white z-10">
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+            onClick={() => setShowForm(false)}
+          />
+
+          {/* Drawer */}
+          <div className="fixed right-0 top-0 bottom-0 z-50 w-[460px] max-w-full bg-white border-l border-slate-200 flex flex-col shadow-2xl">
+
+            {/* Drawer header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
               <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-slate-400 mb-0.5">
-                  Inventory Desk
-                </p>
-                <p className="text-sm font-semibold text-slate-900">
-                  {editingId ? "Edit Product" : "Add Product"}
+                <p className="text-[13px] text-slate-400 mb-0.5">Inventory · Products</p>
+                <p className="text-[17px] font-medium text-slate-900">
+                  {editingId ? "Edit product" : "Add product"}
                 </p>
               </div>
               <button
                 onClick={() => setShowForm(false)}
-                className="w-8 h-8 flex items-center justify-center border border-slate-200 rounded-sm text-slate-400 hover:text-slate-900 hover:bg-slate-50 transition-colors text-base"
+                className="text-[13px] px-3 py-1.5 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors"
               >
-                ✕
+                ✕ Close
               </button>
             </div>
 
-            {/* Form */}
-            <form
-              className="flex-1 px-6 py-5 space-y-3"
-              onSubmit={handleSubmit}
-            >
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Item Code"
-                  value={form.itemCode}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, itemCode: e.target.value }))
-                  }
-                  placeholder="ITM-001"
-                />
-                <Field
-                  label="SKU"
-                  value={form.sku}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, sku: e.target.value }))
-                  }
-                  placeholder="ABC-XYZ"
-                />
-              </div>
+            {/* Tab bar */}
+            <div className="flex border-b border-slate-100 shrink-0 px-5">
+              {["details", "import"].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`text-[13px] font-medium py-3 mr-5 border-b-2 transition-colors capitalize ${
+                    activeTab === tab
+                      ? "border-slate-900 text-slate-900"
+                      : "border-transparent text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  {tab === "details" ? "Product details" : "Import Excel"}
+                </button>
+              ))}
+            </div>
 
-              <Field
-                label="Product Name"
-                value={form.name}
-                onChange={(e) =>
-                  setForm((c) => ({ ...c, name: e.target.value }))
-                }
-                placeholder="Product name"
-              />
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto bg-slate-50">
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Brand"
-                  value={form.brandName}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, brandName: e.target.value }))
-                  }
-                  placeholder="Brand name"
-                />
-                <Field
-                  label="Category"
-                  value={form.category}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, category: e.target.value }))
-                  }
-                  placeholder="Category"
-                />
-              </div>
+              {activeTab === "details" && (
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-5">
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Unit"
-                  value={form.unit}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, unit: e.target.value }))
-                  }
-                  placeholder="PCS, KIT…"
-                />
-                <Field
-                  label="Alert Qty"
-                  type="number"
-                  value={form.alertQty}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, alertQty: e.target.value }))
-                  }
-                  placeholder="0"
-                />
-              </div>
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <CardHeader title="Identity" subtitle="Codes, name and brand" />
+                    <div className="p-5 flex flex-col gap-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Item Code" value={form.itemCode} onChange={(e) => setForm((c) => ({ ...c, itemCode: e.target.value }))} placeholder="ITM-001" />
+                        <Field label="SKU" value={form.sku} onChange={(e) => setForm((c) => ({ ...c, sku: e.target.value }))} placeholder="ABC-XYZ" />
+                      </div>
+                      <Field label="Product Name *" value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} placeholder="Product name" />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Brand" value={form.brandName} onChange={(e) => setForm((c) => ({ ...c, brandName: e.target.value }))} placeholder="Brand name" />
+                        <Field label="Category" value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} placeholder="Category" />
+                      </div>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Unit Price"
-                  type="number"
-                  value={form.unitPrice}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, unitPrice: e.target.value }))
-                  }
-                  placeholder="0.00"
-                />
-                <Field
-                  label="GST Rate (%)"
-                  type="number"
-                  value={form.gstRate}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, gstRate: e.target.value }))
-                  }
-                  placeholder="18"
-                />
-              </div>
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <CardHeader title="Pricing & Tax" subtitle="Selling price, cost price and GST" />
+                    <div className="p-5 flex flex-col gap-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Unit Price" type="number" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} placeholder="0.00" />
+                        <Field label="Cost Price" type="number" value={form.costPrice} onChange={(e) => setForm((c) => ({ ...c, costPrice: e.target.value }))} placeholder="0.00" />
+                      </div>
+                      <Field label="GST Rate (%)" type="number" value={form.gstRate} onChange={(e) => setForm((c) => ({ ...c, gstRate: e.target.value }))} placeholder="18" />
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Cost Price"
-                  type="number"
-                  value={form.costPrice}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, costPrice: e.target.value }))
-                  }
-                  placeholder="0.00"
-                />
-                <Field
-                  label="Opening Stock"
-                  type="number"
-                  value={form.stock}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, stock: e.target.value }))
-                  }
-                  placeholder="0"
-                />
-              </div>
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <CardHeader title="Stock & Unit" subtitle="Quantity, unit and alert threshold" />
+                    <div className="p-5 flex flex-col gap-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Opening Stock" type="number" value={form.stock} onChange={(e) => setForm((c) => ({ ...c, stock: e.target.value }))} placeholder="0" />
+                        <Field label="Alert Qty" type="number" value={form.alertQty} onChange={(e) => setForm((c) => ({ ...c, alertQty: e.target.value }))} placeholder="5" />
+                      </div>
+                      <Field label="Unit (PCS, KIT…)" value={form.unit} onChange={(e) => setForm((c) => ({ ...c, unit: e.target.value }))} placeholder="PCS" />
+                    </div>
+                  </div>
 
-              <label className="block">
-                <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-slate-500">
-                  Description
-                </span>
-                <textarea
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, description: e.target.value }))
-                  }
-                  placeholder="Short product details"
-                  className="mt-1.5 w-full border border-slate-200 rounded-sm px-3 py-2.5 text-sm font-mono text-slate-900 outline-none focus:border-slate-900 bg-white placeholder:text-slate-300 transition-colors min-h-20 resize-none"
-                />
-              </label>
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <CardHeader title="Description" subtitle="Optional product notes" />
+                    <div className="p-5">
+                      <textarea
+                        value={form.description}
+                        onChange={(e) => setForm((c) => ({ ...c, description: e.target.value }))}
+                        placeholder="Short product details, specs, notes…"
+                        rows={3}
+                        className="w-full border border-slate-200 rounded-lg bg-white px-3 py-2 text-[14px] text-slate-900 outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 resize-none"
+                      />
+                    </div>
+                  </div>
 
-              {error && (
-                <p className="text-xs font-mono text-rose-600">{error}</p>
+                  {error && (
+                    <div className="border border-red-100 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="flex-1 text-[13px] font-medium py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    >
+                      {saving ? "Saving…" : editingId ? "Save changes →" : "Create product →"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(false)}
+                      className="text-[13px] px-4 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
               )}
 
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full bg-slate-900 text-white text-xs font-mono py-3 rounded-sm hover:bg-slate-700 transition-colors disabled:opacity-50"
-              >
-                {saving
-                  ? "saving..."
-                  : editingId
-                    ? "save changes →"
-                    : "create product →"}
-              </button>
-            </form>
+              {activeTab === "import" && (
+                <form onSubmit={handleImport} className="flex flex-col gap-4 p-5">
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <CardHeader title="Import from Excel" subtitle="Upload .xlsx to bulk create or update products" />
+                    <div className="p-5 flex flex-col gap-4">
+                      <div>
+                        <Label>Excel file (.xlsx)</Label>
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 bg-white file:mr-3 file:bg-slate-100 file:border-0 file:px-3 file:py-1.5 file:text-[13px] file:rounded-lg file:text-slate-700 outline-none"
+                        />
+                      </div>
 
-            {/* Import Section */}
-            <div className="px-6 pb-8 border-t border-slate-100 pt-5">
-              <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-900 font-semibold mb-3">
-                Import from Excel
-              </p>
-              <form onSubmit={handleImport} className="space-y-3">
-                <label className="block">
-                  <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-slate-500">
-                    Excel file (.xlsx)
-                  </span>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                    className="mt-1.5 w-full border border-slate-200 rounded-sm px-3 py-2 text-xs font-mono text-slate-700 bg-white file:mr-3 file:bg-slate-100 file:border-0 file:px-3 file:py-1.5 file:text-xs file:font-mono file:rounded-sm file:text-slate-700 outline-none"
-                  />
-                </label>
+                      {importSummary && (
+                        <div className="border border-emerald-200 bg-emerald-50 rounded-xl px-4 py-3 text-[13px] text-emerald-700">
+                          <p className="font-medium mb-0.5">Import complete</p>
+                          <p>{importSummary.totalRows} rows · {importSummary.created} created · {importSummary.updated} updated · {importSummary.failed} failed</p>
+                        </div>
+                      )}
 
-                {importSummary && (
-                  <p className="text-xs font-mono text-slate-500">
-                    {importSummary.totalRows} rows — {importSummary.created}{" "}
-                    created, {importSummary.updated} updated,{" "}
-                    {importSummary.failed} failed.
-                  </p>
-                )}
+                      {importErrors.length > 0 && (
+                        <div className="border border-amber-200 bg-amber-50 rounded-xl px-4 py-3 text-[13px] text-amber-700 space-y-1">
+                          <p className="font-medium">Row errors</p>
+                          {importErrors.slice(0, 5).map((item) => (
+                            <p key={`${item.row}-${item.message}`}>Row {item.row}: {item.message}</p>
+                          ))}
+                          {importErrors.length > 5 && <p>…and {importErrors.length - 5} more</p>}
+                        </div>
+                      )}
 
-                {importErrors.length > 0 && (
-                  <div className="border border-amber-200 bg-amber-50 rounded-sm px-3 py-2 text-xs font-mono text-amber-700 space-y-0.5">
-                    {importErrors.slice(0, 5).map((item) => (
-                      <p key={`${item.row}-${item.message}`}>
-                        row {item.row}: {item.message}
-                      </p>
-                    ))}
+                      {error && (
+                        <div className="border border-red-100 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600">
+                          {error}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={importing || !importFile}
+                        className="text-[13px] font-medium py-2.5 border border-slate-900 text-slate-900 rounded-lg hover:bg-slate-900 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {importing ? "Importing…" : "Import Excel →"}
+                      </button>
+                    </div>
                   </div>
-                )}
 
-                <button
-                  type="submit"
-                  disabled={importing}
-                  className="w-full border border-slate-900 text-slate-900 text-xs font-mono py-3 rounded-sm hover:bg-slate-900 hover:text-white transition-colors disabled:opacity-50"
-                >
-                  {importing ? "importing..." : "import excel →"}
-                </button>
-              </form>
+                  <div className="bg-white border border-slate-200 rounded-xl p-5">
+                    <p className="text-[14px] font-medium text-slate-900 mb-2">Expected columns</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {["itemCode", "name", "sku", "brand", "category", "unit", "unitPrice", "costPrice", "gstRate", "stock", "alertQty"].map((col) => (
+                        <span key={col} className="text-[12px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">{col}</span>
+                      ))}
+                    </div>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
-        </div>
+        </>
       )}
-    </main>
+    </div>
   );
 }

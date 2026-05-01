@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 function fmt(value) {
@@ -16,14 +17,22 @@ function calcLine(unitPrice, quantity, gstRate) {
   return { subtotal, gstAmount, total: subtotal + gstAmount };
 }
 
+function createLineId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export default function BillingClient() {
+  const router = useRouter();
   const [products, setProducts] = useState([]);
+  const [serviceChargePresets, setServiceChargePresets] = useState([]);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [quantity, setQuantity] = useState("1");
   const [customer, setCustomer] = useState({ customerName: "", customerPhone: "" });
   const [items, setItems] = useState([]);
+  const [serviceItems, setServiceItems] = useState([]);
+  const [selectedPresetId, setSelectedPresetId] = useState("");
   const [labourCharge, setLabourCharge] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,18 +45,38 @@ export default function BillingClient() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/products", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((payload) => {
-        if (!active) return;
-        const valid = (payload.products || []).filter(
+    Promise.allSettled([
+      fetch("/api/products", { cache: "no-store" }).then(async (r) => {
+        const payload = await r.json();
+        if (!r.ok) throw new Error(payload.error || "Unable to load products.");
+        return payload;
+      }),
+      fetch("/api/service-charge-presets", { cache: "no-store" }).then(async (r) => {
+        const payload = await r.json();
+        if (!r.ok) throw new Error(payload.error || "Unable to load service charge presets.");
+        return payload;
+      }),
+    ]).then(([productsResult, presetsResult]) => {
+      if (!active) return;
+
+      if (productsResult.status === "fulfilled") {
+        const valid = (productsResult.value.products || []).filter(
           (p) => p?.id && p?.name && p?.unitPrice != null
         );
         setProducts(valid);
         setCatalogLoaded(true);
-      })
-      .catch((e) => { if (active) setError(e.message); })
-      .finally(() => { if (active) setLoading(false); });
+      } else {
+        setError(productsResult.reason?.message || "Unable to load products.");
+      }
+
+      if (presetsResult.status === "fulfilled") {
+        setServiceChargePresets(presetsResult.value.presets || []);
+      } else {
+        setServiceChargePresets([]);
+      }
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
     return () => { active = false; };
   }, []);
 
@@ -151,15 +180,82 @@ export default function BillingClient() {
     searchRef.current?.focus();
   }
 
-  const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
-  const tax = items.reduce((s, i) => s + i.gstAmount, 0);
-  const labour = Number(labourCharge) || 0;
-  const grand = items.reduce((s, i) => s + i.total, 0) + labour;
+  function addServiceItem() {
+    if (!catalogLoaded) { setError("Catalog loading. Try again."); return; }
+    const preset = serviceChargePresets.find((item) => item.id === selectedPresetId) || null;
+    if (!preset) { setError("Choose a service preset first."); return; }
+
+    const unitPrice = Number(preset.amount || 0);
+
+    setServiceItems((cur) => {
+      const existing = cur.find((item) => item.presetId === preset.id && item.unitPrice === unitPrice);
+      if (existing) {
+        const nextQty = existing.quantity + 1;
+        return cur.map((item) =>
+          item.lineId === existing.lineId
+            ? { ...item, quantity: nextQty, ...calcLine(item.unitPrice, nextQty, item.gstRate) }
+            : item
+        );
+      }
+
+      const gstRate = 0;
+      const line = calcLine(unitPrice, 1, gstRate);
+      return [
+        ...cur,
+        {
+          lineId: createLineId("svc"),
+          presetId: preset.id,
+          name: preset.name,
+          category: "Service",
+          quantity: 1,
+          unitPrice,
+          gstRate,
+          ...line,
+        },
+      ];
+    });
+
+    setSelectedPresetId("");
+    setError("");
+  }
+
+  function updateServiceQty(lineId, val) {
+    const qty = Number(val);
+    if (!Number.isInteger(qty) || qty <= 0) return;
+    setServiceItems((cur) => cur.map((item) =>
+      item.lineId !== lineId ? item : { ...item, quantity: qty, ...calcLine(item.unitPrice, qty, item.gstRate) }
+    ));
+  }
+
+  function updateServiceGst(lineId, val) {
+    const rate = Number(val);
+    if (!Number.isFinite(rate) || rate < 0) return;
+    setServiceItems((cur) => cur.map((item) =>
+      item.lineId !== lineId ? item : { ...item, gstRate: rate, ...calcLine(item.unitPrice, item.quantity, rate) }
+    ));
+  }
+
+  function removeServiceItem(lineId) {
+    setServiceItems((cur) => cur.filter((item) => item.lineId !== lineId));
+  }
+
+  const invoiceItems = useMemo(
+    () => [
+      ...items.map((item) => ({ ...item, kind: "product", lineId: item.productId })),
+      ...serviceItems.map((item) => ({ ...item, kind: "service", lineId: item.lineId })),
+    ],
+    [items, serviceItems]
+  );
+
+  const subtotal = invoiceItems.reduce((s, i) => s + i.subtotal, 0);
+  const tax = invoiceItems.reduce((s, i) => s + i.gstAmount, 0);
+  const labour = labourCharge.trim() !== "" ? Number(labourCharge) || 0 : 0;
+  const grand = invoiceItems.reduce((s, i) => s + i.total, 0) + labour;
 
   async function submit() {
     if (!catalogLoaded || !products.length) { setError("Products not loaded yet."); return; }
     if (!customer.customerName.trim()) { setError("Customer name is required."); return; }
-    if (!items.length) { setError("Add at least one item."); return; }
+    if (!invoiceItems.length) { setError("Add at least one item."); return; }
     setSaving(true); setError(""); setSuccess("");
     try {
       const res = await fetch("/api/invoices", {
@@ -170,15 +266,20 @@ export default function BillingClient() {
           customerPhone: customer.customerPhone,
           gstRate: 0,
           labourCharge: labour,
-          items: items.map((i) => ({ productId: i.productId, quantity: i.quantity, gstRate: i.gstRate })),
+          items: [
+            ...items.map((i) => ({ productId: i.productId, quantity: i.quantity, gstRate: i.gstRate })),
+            ...serviceItems.map((i) => ({
+              description: i.name,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              gstRate: i.gstRate,
+            })),
+          ],
         }),
       });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.error || "Unable to create invoice.");
-      setSuccess(`Invoice ${payload.invoice.invoiceNumber} created.`);
-      setItems([]); setCustomer({ customerName: "", customerPhone: "" });
-      setQuery(""); setQuantity("1"); setLabourCharge("");
-      searchRef.current?.focus();
+      router.push(`/invoices/${payload.invoice.id}`);
     } catch (e) {
       setError(e.message);
     } finally { setSaving(false); }
@@ -277,6 +378,37 @@ export default function BillingClient() {
             </div>
           </div>
 
+          <div className="flex-none px-5 py-4 border-b border-slate-800">
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-xs uppercase tracking-widest text-slate-500 mb-1.5">
+                  Service / Job
+                </label>
+                <select
+                  value={selectedPresetId}
+                  onChange={(e) => setSelectedPresetId(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2.5 text-sm text-white outline-none focus:border-slate-400"
+                >
+                  <option value="">Choose preset</option>
+                  {serviceChargePresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name} - {fmt(preset.amount)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={addServiceItem}
+                className="bg-white text-slate-900 text-sm font-semibold px-5 py-2.5 rounded-md hover:bg-slate-100 active:bg-slate-200 transition-colors whitespace-nowrap"
+              >
+                Add service
+              </button>
+            </div>
+            {serviceChargePresets.length === 0 && (
+              <p className="text-xs text-slate-500 mt-2">No presets yet. Create them in Service.</p>
+            )}
+          </div>
+
           {/* Results list — shows ALL matches, scrollable */}
           <div ref={listRef} className="flex-1 overflow-y-auto">
             {query.trim() ? (
@@ -289,7 +421,7 @@ export default function BillingClient() {
               ) : filtered.length ? (
                 <>
                   {/* Column header */}
-                  <div className="grid grid-cols-[1fr_100px_76px_68px_92px] gap-2 px-5 py-2.5 text-xs uppercase tracking-widest text-slate-600 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
+                  <div className="grid grid-cols-[1fr_100px_76px_68px_92px] gap-2 px-5 py-2.5 text-xs uppercase tracking-widest text-slate-600 border-b border-slate-800 sticky top-24 bg-slate-900 z-10">
                     <span>Product</span>
                     <span>Category</span>
                     <span>SKU</span>
@@ -374,7 +506,7 @@ export default function BillingClient() {
             <div className="flex gap-6 text-right">
               <div>
                 <p className="text-xs uppercase tracking-widest text-slate-400">Items</p>
-                <p className="text-xl font-bold text-slate-800 leading-tight">{items.length}</p>
+                <p className="text-xl font-bold text-slate-800 leading-tight">{invoiceItems.length}</p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-widest text-slate-400">Subtotal</p>
@@ -400,32 +532,42 @@ export default function BillingClient() {
 
           {/* Line items */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-            {items.length ? items.map((item) => (
+            {invoiceItems.length ? invoiceItems.map((item) => (
               <div
-                key={item.productId}
+                key={item.lineId}
                 className="grid grid-cols-[2fr_52px_90px_52px_80px_88px_28px] gap-1.5 px-5 py-3 items-center hover:bg-slate-50 transition-colors"
               >
                 <div className="min-w-0">
                   <p className="text-slate-900 font-semibold truncate text-sm">{item.name}</p>
                   <p className="text-slate-400 text-xs truncate">
-                    {item.category ? `${item.category} · ` : ""}{item.sku || "—"}
+                    {item.kind === "service"
+                      ? "Service charge"
+                      : `${item.category ? `${item.category} · ` : ""}${item.sku || "—"}`}
                   </p>
                 </div>
                 <input
                   value={item.quantity}
-                  onChange={(e) => updateQty(item.productId, e.target.value)}
+                  onChange={(e) =>
+                    item.kind === "service"
+                      ? updateServiceQty(item.lineId, e.target.value)
+                      : updateQty(item.productId, e.target.value)
+                  }
                   className="border border-slate-200 rounded px-1.5 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-700 w-full text-center"
                 />
                 <p className="text-slate-600 text-sm text-right">{fmt(item.unitPrice)}</p>
                 <input
                   value={item.gstRate}
-                  onChange={(e) => updateGst(item.productId, e.target.value)}
+                  onChange={(e) =>
+                    item.kind === "service"
+                      ? updateServiceGst(item.lineId, e.target.value)
+                      : updateGst(item.productId, e.target.value)
+                  }
                   className="border border-slate-200 rounded px-1.5 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-700 w-full text-center"
                 />
                 <p className="text-slate-500 text-sm text-right">{fmt(item.gstAmount)}</p>
                 <p className="text-slate-900 font-bold text-sm text-right">{fmt(item.total)}</p>
                 <button
-                  onClick={() => removeItem(item.productId)}
+                  onClick={() => (item.kind === "service" ? removeServiceItem(item.lineId) : removeItem(item.productId))}
                   className="text-slate-300 hover:text-rose-500 transition-colors text-center text-xl leading-none"
                 >
                   ×
@@ -435,12 +577,12 @@ export default function BillingClient() {
               <div className="flex flex-col items-center justify-center h-full text-slate-300 py-16">
                 <span className="text-5xl mb-4">🧾</span>
                 <p className="text-sm text-slate-400">No items added yet.</p>
-                <p className="text-xs mt-1 text-slate-400">Search and add products from the left panel.</p>
+                <p className="text-xs mt-1 text-slate-400">Search and add products or service jobs from the left panel.</p>
               </div>
             )}
           </div>
 
-          {/* Totals + Labour + Submit */}
+          {/* Totals + Submit */}
           <div className="flex-none border-t border-slate-100 bg-slate-50 px-5 py-4">
             <div className="flex items-end gap-5">
               <div className="flex-1 space-y-2 text-sm text-slate-500">
@@ -452,15 +594,21 @@ export default function BillingClient() {
                   <span>GST</span>
                   <span className="text-slate-700 font-medium">{fmt(tax)}</span>
                 </div>
-                <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-200">
-                  <span>Labour Charge</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Labour / custom charge</span>
                   <input
                     value={labourCharge}
                     onChange={(e) => setLabourCharge(e.target.value)}
                     placeholder="0.00"
-                    className="w-28 border border-slate-200 rounded-md bg-white px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-600 text-right"
+                    className="w-32 border border-slate-200 rounded-md bg-white px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-600 text-right"
                   />
                 </div>
+                {labour > 0 && (
+                  <div className="flex justify-between">
+                    <span>Added charge</span>
+                    <span className="text-slate-700 font-medium">{fmt(labour)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-bold text-slate-900 border-t border-slate-200 pt-2">
                   <span>Grand Total</span>
                   <span>{fmt(grand)}</span>
@@ -472,7 +620,7 @@ export default function BillingClient() {
                 disabled={saving}
                 className="bg-slate-900 text-white text-sm font-bold px-7 py-3.5 rounded-md hover:bg-slate-700 active:bg-black transition-colors disabled:opacity-50 whitespace-nowrap"
               >
-                {saving ? "Creating…" : "Create Invoice →"}
+                {saving ? "Creating..." : "Create Invoice ->"}
               </button>
             </div>
           </div>
