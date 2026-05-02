@@ -22,7 +22,11 @@ export async function PATCH(request, context) {
   try {
     const body = await parseRequestBody(request, productCreateSchema.partial());
 
+    const itemCode = parseOptionalString(body?.itemCode);
     const name = body.name ? body.name.trim() : undefined;
+    const category = parseOptionalString(body?.category);
+    const unit = parseOptionalString(body?.unit);
+    const alertQty = body?.alertQty === undefined ? undefined : Number(body.alertQty);
     const description = parseOptionalString(body?.description);
     const unitPrice = optionalMoney(body?.unitPrice, "Unit price", { min: 0 });
     const gstRate = optionalMoney(body?.gstRate, "GST rate", { min: 0 });
@@ -51,8 +55,12 @@ export async function PATCH(request, context) {
       }
 
       const data = {};
+      if (itemCode !== null) data.itemCode = itemCode;
       if (name !== undefined) data.name = name;
       if (providedSku !== null) data.sku = providedSku;
+      if (category !== null) data.category = category;
+      if (unit !== null) data.unit = unit;
+      if (alertQty !== undefined) data.alertQty = alertQty;
       if (description !== null) data.description = description;
       if (unitPrice !== null) data.unitPrice = unitPrice;
       if (gstRate !== null) data.gstRate = gstRate;

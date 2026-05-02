@@ -53,7 +53,11 @@ export async function POST(request) {
 
   try {
     const body = await parseRequestBody(request, productCreateSchema);
+    const itemCode = parseOptionalString(body?.itemCode);
     const name = body.name.trim();
+    const category = parseOptionalString(body?.category);
+    const unit = parseOptionalString(body?.unit);
+    const alertQty = body?.alertQty === undefined ? 0 : Number(body.alertQty);
     const description = parseOptionalString(body?.description);
     const unitPrice = optionalMoney(body?.unitPrice, "Unit price", { min: 0 });
     const gstRate = optionalMoney(body?.gstRate, "GST rate", { min: 0 }) || "0.00";
@@ -93,8 +97,12 @@ export async function POST(request) {
 
       return tx.product.create({
         data: {
+          itemCode: itemCode || createReferenceCode("ITM"),
           name,
           sku: providedSku || createReferenceCode("SKU"),
+          category,
+          unit,
+          alertQty,
           description,
           unitPrice,
           gstRate,

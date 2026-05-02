@@ -904,7 +904,7 @@ export default function PurchasesHistoryClient() {
       {/* Bottom bar */}
       <div className="max-w-screen-xl mx-auto px-6 pb-6">
         <div className="flex items-center justify-between border-t border-slate-200 pt-5">
-          <span className="text-[13px] text-slate-400">Phase 1 · Next.js · Prisma · MySQL</span>
+          <span className="text-[13px] text-slate-400">Phase 1 · Next.js · Prisma · PostgreSQL</span>
           <Link
             href="/billing"
             className="text-[13px] font-medium px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors no-underline"
